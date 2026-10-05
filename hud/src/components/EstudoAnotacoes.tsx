@@ -6,7 +6,7 @@ import { cn } from '../lib/cn'
 import { useEnviarMaterial, useRemoverAnotacao, useSalvarAnotacao } from '../lib/queries'
 import { quandoRelativo } from '../lib/tempo'
 import { Markdown } from './Markdown'
-import { Button, Input, Modal, Textarea, Toggle, useToast } from './ui'
+import { Badge, Button, Input, Modal, Textarea, Toggle, useToast } from './ui'
 import { cavado, foco } from './ui/styles'
 
 // ---------- anotações do usuário ----------
@@ -24,7 +24,7 @@ function ItemAnotacao({ materia, a }: { materia: string; a: Anotacao }) {
     e.preventDefault()
     if (!texto.trim()) return
     salvar.mutate(
-      { arquivo: a.arquivo, texto, titulo: a.topico ? null : titulo },
+      { arquivo: a.arquivo, texto, titulo: a.topico && a.origem !== 'quiz' ? null : titulo },
       { onSuccess: () => setEditando(false), onError: (err) => toast('erro', err.message) },
     )
   }
@@ -32,7 +32,7 @@ function ItemAnotacao({ materia, a }: { materia: string; a: Anotacao }) {
   if (editando)
     return (
       <form onSubmit={gravar} className="animar-surgir flex flex-col gap-2 rounded-controle p-3 shadow-relevo-sm">
-        {!a.topico && <Input aria-label="Título" placeholder="Título (opcional)" value={titulo} onChange={(e) => setTitulo(e.target.value)} />}
+        {(!a.topico || a.origem === 'quiz') && <Input aria-label="Título" placeholder="Título (opcional)" value={titulo} onChange={(e) => setTitulo(e.target.value)} />}
         <Textarea rotulo="Anotação" value={texto} onChange={(e) => setTexto(e.target.value)} className="[&_label]:sr-only" />
         <div className="flex justify-end gap-2">
           <Button variante="fantasma" tamanho="sm" onClick={() => setEditando(false)}>
@@ -50,7 +50,10 @@ function ItemAnotacao({ materia, a }: { materia: string; a: Anotacao }) {
       <header className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           {a.titulo && <h4 className="font-semibold">{a.titulo}</h4>}
-          <span className="text-xs text-tinta-suave">{quandoRelativo(a.atualizado || a.criado)}</span>
+          <span className="flex items-center gap-2 text-xs text-tinta-suave">
+            {a.origem === 'quiz' && <Badge cor="sakura">do quiz</Badge>}
+            {quandoRelativo(a.atualizado || a.criado)}
+          </span>
         </div>
         <span className="flex shrink-0 items-center gap-1">
           <button type="button" aria-label="Editar anotação" onClick={() => setEditando(true)} className={cn('rounded-pilula p-1.5 text-tinta-suave hover:text-tinta hover:shadow-relevo-sm', foco)}>
@@ -234,7 +237,7 @@ export function EnviarMaterial({
         <Toggle ligado={estruturar} onChange={setEstruturar} mostrarRotulo rotulo="Estruturar com o Gandalf" />
         <p className="text-xs text-tinta-suave">
           {estruturar
-            ? `O Gandalf lê o material e ${topico ? 'acrescenta ao tópico (ou cria tópicos novos se for outro assunto)' : 'acrescenta aos tópicos que já existem ou cria tópicos novos'}, com resumo e perguntas. Usa a sua cota do Claude.`
+            ? `O Gandalf lê o material e ${topico ? 'acrescenta ao tópico (ou cria tópicos novos se for outro assunto)' : 'acrescenta aos tópicos que já existem ou cria tópicos novos'}, explicando o conteúdo novo. Usa a sua cota do Claude.`
             : 'O material só fica guardado na matéria (pasta _fontes/), sem IA.'}
         </p>
       </div>

@@ -21,7 +21,7 @@ const VISUAL: Record<string, { icone: ReactNode; cor: Cor }> = {
   'resumo-do-dia': { icone: <Sun />, cor: 'ocre' },
   'sincronizar-agenda': { icone: <CalendarSync />, cor: 'ardosia' },
   'planejar-semana': { icone: <CalendarRange />, cor: 'madeira' },
-  'revisar-estudos': { icone: <BookOpen />, cor: 'sakura' },
+  'preparar-estudos': { icone: <BookOpen />, cor: 'sakura' },
   'responder-com-vault': { icone: <MessageSquareText />, cor: 'musgo-claro' },
 }
 const PADRAO = { icone: <Wand2 />, cor: 'musgo' as Cor }

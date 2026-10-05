@@ -221,46 +221,66 @@ export type TemaBibliotecaDetalhe = TemaBiblioteca & {
   tem_checklist: boolean
 }
 
+/** Matéria de estudo: o acervo pessoal de wiki/estudos/<materia>/ (tópicos, anotações e material). */
 export type Materia = {
   materia: string
   titulo: string
-  prazo: string | null
-  notas: number
-  progresso: { total: number; estudados: number; dominados: number }
-  pendentes: Array<{ nota: string; titulo: string; desde: string }>
-  proxima_revisao: string | null
-  proxima_tarefa: Tarefa | null
-  revisoes_feitas: number
-  ultima_revisao: string | null
+  topicos_total: number
+  anotacoes_total: number
+  fontes_total: number
+  /** Títulos dos primeiros tópicos (para o cartão da lista). */
+  titulos: string[]
 }
-
-export type EstadoTopico = 'novo' | 'estudado' | 'dominado'
 
 export type Topico = {
   nota: string
   titulo: string
-  estado: EstadoTopico
-  revisar: string | null
-  intervalo: number
-  revisoes: number
-  perguntas: number
   ordem: number | null
+  /** Primeiro parágrafo da nota. */
+  resumo: string
+  palavras: number
   /** Quantas anotações do usuário este tópico tem. */
   anotacoes?: number
 }
 
 /** Anotação do usuário (wiki/estudos/<materia>/_anotacoes/): de um tópico ou geral (topico vazio). */
-export type Anotacao = { arquivo: string; titulo: string | null; texto: string; topico: string | null; criado: string; atualizado: string }
+export type Anotacao = {
+  arquivo: string
+  titulo: string | null
+  texto: string
+  topico: string | null
+  /** 'quiz' = questão salva de um quiz. */
+  origem: 'quiz' | null
+  criado: string
+  atualizado: string
+}
 
 /** Material enviado para a matéria (wiki/estudos/<materia>/_fontes/). */
 export type Fonte = { arquivo: string; nome: string; tamanho: number }
 
-export type MateriaDetalhe = Materia & { hoje: string; indice: string; topicos: Topico[]; tarefas: Tarefa[]; anotacoes: Anotacao[]; fontes: Fonte[] }
+export type MateriaDetalhe = Materia & { indice: string; topicos: Topico[]; anotacoes: Anotacao[]; fontes: Fonte[] }
 
-/** Flashcard tirado de uma nota (item numerado + callout com a resposta). */
-export type Carta = { id: string; nota: string; titulo: string; pergunta: string; resposta: string }
+export type TipoQuiz = 'multipla' | 'texto'
+export const MAX_PERGUNTAS_QUIZ = 15
 
-export type NivelRevisao = 'errei' | 'dificil' | 'facil'
+/** Pergunta de um quiz efêmero (não fica salvo em lugar nenhum). */
+export type PerguntaQuiz = {
+  pergunta: string
+  resposta: string
+  explicacao: string
+  /** Nota do tópico de onde a pergunta saiu. */
+  topico: string | null
+  titulo_topico: string | null
+  /** Só na múltipla escolha. */
+  opcoes: string[] | null
+  correta: number | null
+}
+
+export type Quiz = { tipo: TipoQuiz; topico: string | null; perguntas: PerguntaQuiz[] }
+
+export type Veredito = 'certo' | 'parcial' | 'errado'
+
+export type CorrecaoQuiz = { veredito: Veredito; comentario: string; complemento: string }
 
 export type Recibo = {
   id: string

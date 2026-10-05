@@ -1,54 +1,46 @@
 import {
   ArrowLeft,
+  ArrowRight,
   BookOpen,
-  BookOpenCheck,
-  Brain,
-  CircleCheck,
+  Bookmark,
+  BookmarkCheck,
+  Check,
+  CircleHelp,
   GraduationCap,
-  ListChecks,
-  NotebookPen,
+  Layers,
+  ListOrdered,
   MessageCircleQuestion,
-  Play,
+  NotebookPen,
   Plus,
-  Repeat,
+  RotateCcw,
   Sparkles,
   Timer,
+  Trash2,
   Upload,
   Wand2,
+  X,
 } from 'lucide-react'
-import { useEffect, useState, type FormEvent } from 'react'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
+import { useState, type FormEvent } from 'react'
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router'
 import { ChatThread } from '../components/ChatThread'
 import { Anotacoes, EnviarMaterial } from '../components/EstudoAnotacoes'
 import { Markdown } from '../components/Markdown'
-import { Badge, BentoGrid, BentoItem, Button, Card, Checkbox, EmptyState, Input, Modal, ProgressBar, Textarea, useToast, type Cor } from '../components/ui'
-import { foco } from '../components/ui/styles'
-import type { Carta, EstadoTopico, Materia, NivelRevisao, Topico } from '../lib/api'
+import { Badge, BentoGrid, BentoItem, Button, Card, EmptyState, Input, Modal, Pill, ProgressBar, Textarea, useToast, type Cor } from '../components/ui'
+import { cavado, foco } from '../components/ui/styles'
+import { MAX_PERGUNTAS_QUIZ, type CorrecaoQuiz, type Materia, type MateriaDetalhe, type PerguntaQuiz, type TipoQuiz, type Topico, type Veredito } from '../lib/api'
 import { cn } from '../lib/cn'
-import { dataPorExtenso, ddmm } from '../lib/datas'
 import { pomodoro } from '../lib/pomodoro'
-import {
-  useCartas,
-  useConcluirTarefa,
-  useEstudos,
-  useGerarEstudo,
-  useMarcarEstudado,
-  useMateria,
-  useNota,
-  useAnotacoes,
-  useRegistrarRevisao,
-} from '../lib/queries'
-
-const ESTADO: Record<EstadoTopico, { cor: Cor; texto: string }> = {
-  novo: { cor: 'ardosia', texto: 'novo' },
-  estudado: { cor: 'ocre', texto: 'estudado' },
-  dominado: { cor: 'musgo', texto: 'dominado' },
-}
+import { useAnotacoes, useCorrigirQuiz, useEstudos, useGerarEstudo, useMateria, useNota, useQuiz, useRemoverMateria, useSalvarAnotacao } from '../lib/queries'
 
 const urlMateria = (m: string) => `/estudos/${encodeURIComponent(m)}`
 const urlTopico = (m: string, nota: string) => `${urlMateria(m)}/topico?nota=${encodeURIComponent(nota)}`
-const urlRevisar = (m: string, filtro: { nota?: string; todas?: boolean } = {}) =>
-  `${urlMateria(m)}/revisar${filtro.nota ? `?nota=${encodeURIComponent(filtro.nota)}` : filtro.todas ? '?todas=1' : ''}`
+const urlQuiz = (m: string, q: { quantidade: number; tipo: TipoQuiz; topico?: string | null }) => {
+  const p = new URLSearchParams({ n: String(q.quantidade), tipo: q.tipo })
+  if (q.topico) p.set('topico', q.topico)
+  return `${urlMateria(m)}/quiz?${p}`
+}
+
+const palavras = (n: number) => (n >= 1000 ? `~${(n / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mil palavras` : `${n} palavras`)
 
 function Voltar({ para, texto }: { para: string; texto: string }) {
   return (
@@ -65,7 +57,7 @@ function useGerar() {
   const navigate = useNavigate()
   return {
     pendente: gerar.isPending,
-    gerar: (p: { pedido: string; tipo: 'materia' | 'nota' | 'perguntas'; nota?: string }, aoTerminar?: () => void) =>
+    gerar: (p: { pedido: string; tipo: 'materia' | 'nota' | 'aprofundar'; nota?: string }, aoTerminar?: () => void) =>
       gerar.mutate(p, {
         onSuccess: (s) => {
           toast('sucesso', 'O Gandalf começou a preparar o material (acompanhe em Terminais)')
@@ -82,12 +74,11 @@ function useGerar() {
 function NovaMateria({ aberto, onClose }: { aberto: boolean; onClose: () => void }) {
   const { gerar, pendente } = useGerar()
   const [texto, setTexto] = useState('')
-  const [prazo, setPrazo] = useState('')
 
   function enviar(e?: FormEvent) {
     e?.preventDefault()
     if (!texto.trim()) return
-    gerar({ pedido: texto.trim() + (prazo ? ` (prazo: ${prazo})` : ''), tipo: 'materia' }, onClose)
+    gerar({ pedido: texto.trim(), tipo: 'materia' }, onClose)
   }
 
   return (
@@ -111,13 +102,12 @@ function NovaMateria({ aberto, onClose }: { aberto: boolean; onClose: () => void
       <form onSubmit={enviar} className="flex flex-col gap-4">
         <Textarea
           rotulo="O que você quer estudar?"
-          placeholder="Ex.: certificação X da empresa Y; cálculo II para a prova; inglês para entrevistas…"
+          placeholder="Ex.: certificação X da empresa Y; cálculo II; inglês para entrevistas…"
           value={texto}
           onChange={(e) => setTexto(e.target.value)}
         />
-        <Input rotulo="Até quando? (opcional)" type="date" value={prazo} onChange={(e) => setPrazo(e.target.value)} className="max-w-48" />
         <p className="text-xs text-tinta-suave">
-          O Gandalf pesquisa a ementa oficial, cria as notas de cada tópico com perguntas, o cronograma e as tarefas da primeira semana. Leva alguns minutos e usa a sua cota do Claude.
+          O Gandalf pesquisa o conteúdo oficial e escreve poucos tópicos, longos e aprofundados, para você estudar no seu ritmo, tirar dúvidas e gerar quizzes. Leva alguns minutos e usa a sua cota do Claude.
         </p>
       </form>
     </Modal>
@@ -125,35 +115,25 @@ function NovaMateria({ aberto, onClose }: { aberto: boolean; onClose: () => void
 }
 
 function CartaoMateria({ m }: { m: Materia }) {
-  const navigate = useNavigate()
-  const pendentes = m.pendentes.length
-  const p = m.progresso
   return (
     <Card
       className="h-full justify-between"
       titulo={<Link to={urlMateria(m.materia)} className={cn('rounded hover:underline', foco)}>{m.titulo}</Link>}
-      subtitulo={`${p.total} tópico(s)${m.prazo ? ` · até ${ddmm(m.prazo)}` : ''}`}
+      subtitulo={[`${m.topicos_total} tópico(s)`, m.anotacoes_total && `${m.anotacoes_total} anotação(ões)`, m.fontes_total && `${m.fontes_total} material(is)`].filter(Boolean).join(' · ')}
       icone={<BookOpen />}
       cor="sakura"
-      acoes={pendentes > 0 ? <Badge cor="ocre">{pendentes} para revisar</Badge> : p.estudados > 0 ? <Badge cor="musgo">em dia</Badge> : undefined}
     >
-      {p.total > 0 && <ProgressBar rotulo={`Estudados ${p.estudados}/${p.total} · dominados ${p.dominados}`} valor={p.estudados} max={p.total} cor="sakura" />}
-      {m.proxima_tarefa && (
-        <p className="text-sm">
-          <span className="text-tinta-suave">Próxima sessão{m.proxima_tarefa.vence ? ` (${ddmm(m.proxima_tarefa.vence)})` : ''}: </span>
-          <span className="font-semibold">{m.proxima_tarefa.texto}</span>
-        </p>
+      {m.titulos.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {m.titulos.map((t) => (
+            <Pill key={t}>{t}</Pill>
+          ))}
+          {m.topicos_total > m.titulos.length && <span className="self-center text-xs text-tinta-suave">+{m.topicos_total - m.titulos.length}</span>}
+        </div>
       )}
-      <div className="flex flex-wrap justify-end gap-2">
-        {pendentes > 0 && (
-          <Button variante="secundario" tamanho="sm" onClick={() => navigate(urlRevisar(m.materia))}>
-            <Repeat className="size-3.5" aria-hidden /> Revisar
-          </Button>
-        )}
-        <Button tamanho="sm" onClick={() => navigate(urlMateria(m.materia))}>
-          <BookOpenCheck className="size-3.5" aria-hidden /> Estudar
-        </Button>
-      </div>
+      <Link to={urlMateria(m.materia)} className={cn('self-end rounded-pilula text-sm font-semibold text-musgo-texto hover:underline', foco)}>
+        Abrir acervo →
+      </Link>
     </Card>
   )
 }
@@ -161,20 +141,13 @@ function CartaoMateria({ m }: { m: Materia }) {
 export function Estudos() {
   const { data: materias = [], isPending, error } = useEstudos()
   const [criando, setCriando] = useState(false)
-  const totalPendentes = materias.reduce((n, m) => n + m.pendentes.length, 0)
 
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-4xl font-semibold tracking-tight">Estudos</h1>
-          <p className="mt-1 text-tinta-suave">
-            {materias.length === 0
-              ? 'Estude, revise com flashcards e tire dúvidas com o Gandalf.'
-              : totalPendentes > 0
-                ? `${totalPendentes} tópico(s) para revisar hoje.`
-                : 'Nenhuma revisão pendente hoje.'}
-          </p>
+          <p className="mt-1 text-tinta-suave">Seu acervo de estudo: leia, anote, tire dúvidas e teste-se com quizzes do Gandalf.</p>
         </div>
         <Button onClick={() => setCriando(true)}>
           <Plus className="size-4" aria-hidden /> Nova matéria
@@ -189,7 +162,7 @@ export function Estudos() {
           icone={<GraduationCap />}
           cor="sakura"
           titulo="Nenhuma matéria ainda"
-          descricao="Toque em “Nova matéria” e diga o que quer estudar: o Gandalf pesquisa o conteúdo, monta as notas, o cronograma e os flashcards."
+          descricao="Toque em “Nova matéria” e diga o que quer estudar: o Gandalf pesquisa o conteúdo e escreve os tópicos."
           acao={<Button onClick={() => setCriando(true)}><Plus className="size-4" aria-hidden /> Nova matéria</Button>}
         />
       ) : (
@@ -206,28 +179,159 @@ export function Estudos() {
   )
 }
 
+// ---------- gerar quiz ----------
+
+const TIPOS: Array<{ tipo: TipoQuiz; texto: string; dica: string }> = [
+  { tipo: 'multipla', texto: 'Múltipla escolha', dica: '4 opções; a correção é na hora' },
+  { tipo: 'texto', texto: 'Texto livre', dica: 'você escreve; o Gandalf corrige' },
+]
+
+function GerarQuiz({ materia, topico, tituloTopico, aberto, onClose }: { materia: string; topico?: string; tituloTopico?: string; aberto: boolean; onClose: () => void }) {
+  const navigate = useNavigate()
+  const [quantidade, setQuantidade] = useState(5)
+  const [tipo, setTipo] = useState<TipoQuiz>('multipla')
+  const valido = Number.isInteger(quantidade) && quantidade >= 1 && quantidade <= MAX_PERGUNTAS_QUIZ
+
+  function comecar(e?: FormEvent) {
+    e?.preventDefault()
+    if (!valido) return
+    onClose()
+    navigate(urlQuiz(materia, { quantidade, tipo, topico }))
+  }
+
+  return (
+    <Modal
+      aberto={aberto}
+      onClose={onClose}
+      titulo={tituloTopico ? `Quiz: ${tituloTopico}` : 'Quiz da matéria'}
+      icone={<CircleHelp />}
+      cor="sakura"
+      rodape={
+        <>
+          <Button variante="fantasma" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button onClick={() => comecar()} disabled={!valido}>
+            <Sparkles className="size-4" aria-hidden /> Gerar quiz
+          </Button>
+        </>
+      }
+    >
+      <form onSubmit={comecar} className="flex flex-col gap-5">
+        <Input
+          rotulo="Quantas perguntas?"
+          dica={`de 1 a ${MAX_PERGUNTAS_QUIZ}`}
+          type="number"
+          min={1}
+          max={MAX_PERGUNTAS_QUIZ}
+          value={Number.isNaN(quantidade) ? '' : quantidade}
+          onChange={(e) => setQuantidade(e.target.valueAsNumber)}
+          erro={valido ? undefined : `Escolha de 1 a ${MAX_PERGUNTAS_QUIZ}`}
+          className="max-w-40"
+        />
+        <fieldset className="flex flex-col gap-2">
+          <legend className="mb-2 text-sm font-semibold">Tipo</legend>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {TIPOS.map((t) => (
+              <button
+                key={t.tipo}
+                type="button"
+                aria-pressed={tipo === t.tipo}
+                onClick={() => setTipo(t.tipo)}
+                className={cn(
+                  'flex flex-col items-start gap-0.5 rounded-controle px-4 py-3 text-left transition-shadow',
+                  tipo === t.tipo ? 'shadow-cavado-sm' : 'shadow-relevo-sm hover:shadow-relevo',
+                  foco,
+                )}
+              >
+                <span className={cn('font-semibold', tipo === t.tipo && 'text-musgo-texto')}>{t.texto}</span>
+                <span className="text-xs text-tinta-suave">{t.dica}</span>
+              </button>
+            ))}
+          </div>
+        </fieldset>
+        <p className="text-xs text-tinta-suave">
+          {topico ? 'As perguntas saem deste tópico e das suas anotações sobre ele.' : 'As perguntas saem de tópicos variados da matéria.'} O quiz não fica salvo: guarde as questões que quiser como anotação. Usa a sua cota do Claude.
+        </p>
+      </form>
+    </Modal>
+  )
+}
+
 // ---------- matéria ----------
 
-function LinhaTopico({ materia, t, hoje }: { materia: string; t: Topico; hoje: string }) {
-  const vencida = t.revisar && t.revisar <= hoje
+function ExcluirMateria({ m, aberto, onClose }: { m: MateriaDetalhe; aberto: boolean; onClose: () => void }) {
+  const remover = useRemoverMateria()
+  const toast = useToast()
+  const navigate = useNavigate()
+  const [confirmacao, setConfirmacao] = useState('')
+  const confere = confirmacao.trim().toLowerCase() === m.titulo.trim().toLowerCase()
+
+  function fechar() {
+    setConfirmacao('')
+    onClose()
+  }
+
+  function excluir(e?: FormEvent) {
+    e?.preventDefault()
+    if (!confere) return
+    remover.mutate(m.materia, {
+      onSuccess: () => {
+        toast('sucesso', `Matéria “${m.titulo}” excluída`)
+        navigate('/estudos', { replace: true })
+      },
+      onError: (err) => toast('erro', err.message),
+    })
+  }
+
+  return (
+    <Modal
+      aberto={aberto}
+      onClose={fechar}
+      titulo="Excluir matéria"
+      icone={<Trash2 />}
+      cor="terracota"
+      rodape={
+        <>
+          <Button variante="fantasma" onClick={fechar}>
+            Cancelar
+          </Button>
+          <Button className="text-erro" onClick={() => excluir()} disabled={!confere || remover.isPending}>
+            <Trash2 className="size-4" aria-hidden /> Excluir tudo
+          </Button>
+        </>
+      }
+    >
+      <form onSubmit={excluir} className="flex flex-col gap-4">
+        <p className="text-sm">
+          Isto apaga <strong>{m.titulo}</strong> por completo: {m.topicos_total} tópico(s), {m.anotacoes_total} anotação(ões) suas e {m.fontes_total} material(is) enviado(s).
+          Não dá para desfazer pelo HUD.
+        </p>
+        <Input rotulo="Para confirmar, digite o nome da matéria" placeholder={m.titulo} value={confirmacao} onChange={(e) => setConfirmacao(e.target.value)} autoFocus />
+      </form>
+    </Modal>
+  )
+}
+
+function LinhaTopico({ materia, t }: { materia: string; t: Topico }) {
   return (
     <li>
       <Link
         to={urlTopico(materia, t.nota)}
-        className={cn('flex flex-wrap items-center gap-x-3 gap-y-1 rounded-controle px-3 py-2.5 shadow-relevo-sm transition-shadow hover:shadow-relevo active:shadow-cavado-sm', foco)}
+        className={cn('flex flex-col gap-1 rounded-controle px-4 py-3 shadow-relevo-sm transition-shadow hover:shadow-relevo active:shadow-cavado-sm', foco)}
       >
-        <span className="w-6 text-right text-xs font-semibold text-tinta-suave tabular-nums">{t.ordem ?? '·'}</span>
-        <span className="min-w-0 flex-1 font-semibold">{t.titulo}</span>
-        <span className="flex items-center gap-2">
-          {(t.anotacoes ?? 0) > 0 && (
-            <span className="flex items-center gap-1 text-xs text-tinta-suave" title="suas anotações">
-              <NotebookPen className="size-3.5" aria-hidden /> {t.anotacoes}
-            </span>
-          )}
-          {t.perguntas > 0 && <span className="text-xs text-tinta-suave">{t.perguntas} perguntas</span>}
-          {vencida ? <Badge cor="terracota">revisar</Badge> : t.revisar ? <span className="text-xs text-tinta-suave">revisão {ddmm(t.revisar)}</span> : null}
-          <Badge cor={ESTADO[t.estado].cor}>{ESTADO[t.estado].texto}</Badge>
+        <span className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+          <span className="min-w-0 font-semibold">{t.titulo}</span>
+          <span className="flex items-center gap-3 text-xs text-tinta-suave">
+            {(t.anotacoes ?? 0) > 0 && (
+              <span className="flex items-center gap-1" title="suas anotações">
+                <NotebookPen className="size-3.5" aria-hidden /> {t.anotacoes}
+              </span>
+            )}
+            <span>{palavras(t.palavras)}</span>
+          </span>
         </span>
+        {t.resumo && <span className="line-clamp-2 text-sm text-tinta-suave">{t.resumo}</span>}
       </Link>
     </li>
   )
@@ -236,26 +340,14 @@ function LinhaTopico({ materia, t, hoje }: { materia: string; t: Topico; hoje: s
 export function MateriaTela() {
   const { materia = '' } = useParams()
   const { data: m, isPending, error } = useMateria(materia)
-  const concluir = useConcluirTarefa()
   const { gerar, pendente } = useGerar()
-  const navigate = useNavigate()
-  const toast = useToast()
   const [novoTopico, setNovoTopico] = useState<string | null>(null)
   const [material, setMaterial] = useState(false)
+  const [quiz, setQuiz] = useState(false)
+  const [excluir, setExcluir] = useState(false)
 
   if (isPending) return <p className="text-tinta-suave">carregando…</p>
   if (error || !m) return <EmptyState icone={<BookOpen />} cor="terracota" titulo="Matéria não encontrada" descricao={error?.message} acao={<Voltar para="/estudos" texto="Estudos" />} />
-
-  const hoje = m.hoje
-  const proximo = m.topicos.find((t) => t.estado === 'novo') ?? m.topicos.find((t) => t.revisar && t.revisar <= hoje)
-  const pendentes = m.pendentes.length
-
-  function estudarAgora() {
-    if (!proximo) return
-    pomodoro.focar(`${proximo.titulo} (${m!.titulo})`)
-    toast('info', `Pomodoro de foco iniciado: ${proximo.titulo}`)
-    navigate(urlTopico(materia, proximo.nota))
-  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -264,39 +356,28 @@ export function MateriaTela() {
         <div>
           <h1 className="text-4xl font-semibold tracking-tight">{m.titulo}</h1>
           <p className="mt-1 text-tinta-suave">
-            {m.progresso.estudados}/{m.progresso.total} estudados · {m.progresso.dominados} dominados
-            {m.prazo && ` · prazo ${dataPorExtenso(m.prazo)}`}
+            {m.topicos_total} tópico(s) · {palavras(m.topicos.reduce((n, t) => n + t.palavras, 0))}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button variante="fantasma" className="hover:text-erro" onClick={() => setExcluir(true)} title="Apagar a matéria com todos os tópicos, anotações e material">
+            <Trash2 className="size-4" aria-hidden /> Excluir
+          </Button>
           <Button variante="fantasma" onClick={() => setMaterial(true)} title="Mandar documentos ou texto para o Gandalf estruturar">
             <Upload className="size-4" aria-hidden /> Enviar material
           </Button>
-          {pendentes > 0 ? (
-            <Button variante="secundario" onClick={() => navigate(urlRevisar(materia))}>
-              <Repeat className="size-4" aria-hidden /> Revisar ({pendentes})
-            </Button>
-          ) : (
-            m.progresso.estudados > 0 && (
-              <Button variante="secundario" onClick={() => navigate(urlRevisar(materia, { todas: true }))}>
-                <Brain className="size-4" aria-hidden /> Treinar tudo
-              </Button>
-            )
-          )}
-          {proximo && (
-            <Button onClick={estudarAgora}>
-              <Timer className="size-4" aria-hidden /> Estudar agora
+          {m.topicos.length > 0 && (
+            <Button onClick={() => setQuiz(true)} title="Perguntas de tópicos variados da matéria">
+              <CircleHelp className="size-4" aria-hidden /> Gerar quiz
             </Button>
           )}
         </div>
       </header>
-      {m.progresso.total > 0 && <ProgressBar rotulo="Progresso" valor={m.progresso.estudados} max={m.progresso.total} cor="sakura" />}
 
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <Card
           titulo="Tópicos"
-          subtitulo={proximo ? `próximo: ${proximo.titulo}` : 'tudo estudado'}
-          icone={<ListChecks />}
+          icone={<Layers />}
           cor="sakura"
           acoes={
             <Button variante="fantasma" tamanho="sm" onClick={() => setNovoTopico('')}>
@@ -305,36 +386,17 @@ export function MateriaTela() {
           }
         >
           {m.topicos.length === 0 ? (
-            <p className="text-sm text-tinta-suave">Ainda sem tópicos. Peça um tópico novo ou rode “Nova matéria”.</p>
+            <p className="text-sm text-tinta-suave">Ainda sem tópicos. Peça um tópico novo ou envie material.</p>
           ) : (
             <ol className="animar-cascata flex flex-col gap-2">
               {m.topicos.map((t) => (
-                <LinhaTopico key={t.nota} materia={materia} t={t} hoje={hoje} />
+                <LinhaTopico key={t.nota} materia={materia} t={t} />
               ))}
             </ol>
           )}
         </Card>
 
         <div className="flex flex-col gap-6">
-          <Card titulo="Sessões de estudo" subtitulo="tarefas desta matéria" icone={<CircleCheck />} cor="musgo">
-            {m.tarefas.length === 0 ? (
-              <p className="text-sm text-tinta-suave">Nenhuma sessão agendada. Peça ao Gandalf: “planeje minha semana”.</p>
-            ) : (
-              <ul className="flex flex-col gap-2.5">
-                {m.tarefas.map((t) => (
-                  <li key={t.id} className="flex items-center justify-between gap-2">
-                    <Checkbox
-                      rotulo={<span className="text-sm">{t.texto}</span>}
-                      riscar
-                      checked={t.concluida}
-                      onChange={(e) => concluir.mutate({ id: t.id, concluida: e.target.checked }, { onError: (err) => toast('erro', err.message) })}
-                    />
-                    {t.vence && <span className={cn('shrink-0 text-xs', t.vence < hoje && !t.concluida ? 'font-semibold text-erro' : 'text-tinta-suave')}>{ddmm(t.vence)}</span>}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
           <Card titulo="Minhas anotações" subtitulo="gerais da matéria" icone={<NotebookPen />} cor="ardosia">
             <Anotacoes materia={materia} itens={m.anotacoes} />
           </Card>
@@ -353,9 +415,9 @@ export function MateriaTela() {
             </Card>
           )}
           {m.indice && (
-            <Card titulo="Plano de estudos" subtitulo="_index.md" icone={<Sparkles />} cor="ocre">
+            <Card titulo="Mapa da matéria" subtitulo="_index.md" icone={<Sparkles />} cor="ocre">
               <details className="group">
-                <summary className={cn('cursor-pointer text-sm font-semibold text-musgo-texto', foco)}>Ver objetivo, ementa e cronograma</summary>
+                <summary className={cn('cursor-pointer text-sm font-semibold text-musgo-texto', foco)}>Ver objetivo e conteúdo</summary>
                 <Markdown texto={m.indice} className="mt-3 text-sm" />
               </details>
             </Card>
@@ -374,13 +436,15 @@ export function MateriaTela() {
             disabled={!novoTopico?.trim() || pendente}
             onClick={() => gerar({ pedido: `matéria "${m.titulo}" (wiki/estudos/${materia}/): ${novoTopico}`, tipo: 'nota' }, () => setNovoTopico(null))}
           >
-            <Wand2 className="size-4" aria-hidden /> Gerar nota
+            <Wand2 className="size-4" aria-hidden /> Gerar tópico
           </Button>
         }
       >
         <Textarea rotulo="Sobre o que é o tópico?" placeholder="Ex.: prompt caching e quando usar" value={novoTopico ?? ''} onChange={(e) => setNovoTopico(e.target.value)} />
       </Modal>
       <EnviarMaterial materia={materia} aberto={material} onClose={() => setMaterial(false)} />
+      <GerarQuiz materia={materia} aberto={quiz} onClose={() => setQuiz(false)} />
+      <ExcluirMateria m={m} aberto={excluir} onClose={() => setExcluir(false)} />
     </div>
   )
 }
@@ -394,23 +458,16 @@ export function TopicoTela() {
   const { data: m } = useMateria(materia)
   const { data: conteudo, isPending, error } = useNota(nota || null)
   const { data: anotacoes = [] } = useAnotacoes(materia, nota)
-  const [material, setMaterial] = useState(false)
-  const estudado = useMarcarEstudado(materia)
   const { gerar, pendente } = useGerar()
   const navigate = useNavigate()
-  const toast = useToast()
+  const [material, setMaterial] = useState(false)
+  const [quiz, setQuiz] = useState(false)
+  const [aprofundar, setAprofundar] = useState<string | null>(null)
   const t = m?.topicos.find((x) => x.nota === nota)
   const titulo = t?.titulo ?? nota.split('/').pop()?.replace('.md', '') ?? ''
   const indice = m?.topicos.findIndex((x) => x.nota === nota) ?? -1
+  const anterior = indice > 0 ? m?.topicos[indice - 1] : undefined
   const seguinte = indice >= 0 ? m?.topicos[indice + 1] : undefined
-
-  function marcar() {
-    estudado.mutate(nota, {
-      onSuccess: (r) =>
-        toast('sucesso', `Estudado! Primeira revisão ${r.topico.revisar ? ddmm(r.topico.revisar) : 'amanhã'}` + (r.tarefas_concluidas.length ? ' · tarefa concluída' : '')),
-      onError: (e) => toast('erro', e.message),
-    })
-  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -418,11 +475,12 @@ export function TopicoTela() {
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
           <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{titulo}</h1>
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-tinta-suave">
-            {t && <Badge cor={ESTADO[t.estado].cor}>{ESTADO[t.estado].texto}</Badge>}
-            {t?.revisar && <span>próxima revisão {ddmm(t.revisar)}</span>}
-            {t && t.revisoes > 0 && <span>· {t.revisoes} revisão(ões)</span>}
-          </div>
+          {t && (
+            <p className="mt-2 text-sm text-tinta-suave">
+              {palavras(t.palavras)}
+              {anotacoes.length > 0 && ` · ${anotacoes.length} anotação(ões) suas`}
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variante="fantasma" onClick={() => setMaterial(true)} title="Mandar documentos ou texto sobre este tópico">
@@ -431,16 +489,12 @@ export function TopicoTela() {
           <Button variante="fantasma" onClick={() => pomodoro.focar(`${titulo}${m ? ` (${m.titulo})` : ''}`)} title="Começar um foco de pomodoro neste tópico">
             <Timer className="size-4" aria-hidden /> Foco
           </Button>
-          {t && t.perguntas > 0 && (
-            <Button variante="secundario" onClick={() => navigate(urlRevisar(materia, { nota }))}>
-              <Brain className="size-4" aria-hidden /> Flashcards ({t.perguntas})
-            </Button>
-          )}
-          {t?.estado === 'novo' && (
-            <Button onClick={marcar} disabled={estudado.isPending}>
-              <CircleCheck className="size-4" aria-hidden /> Marcar como estudado
-            </Button>
-          )}
+          <Button variante="secundario" onClick={() => setAprofundar('')} title="Pedir ao Gandalf para expandir este tópico">
+            <Wand2 className="size-4" aria-hidden /> Aprofundar
+          </Button>
+          <Button onClick={() => setQuiz(true)} title="Perguntas sobre este tópico">
+            <CircleHelp className="size-4" aria-hidden /> Gerar quiz
+          </Button>
         </div>
       </header>
 
@@ -453,16 +507,22 @@ export function TopicoTela() {
           ) : (
             <Markdown texto={conteudo?.texto ?? ''} />
           )}
-          <div className="mt-4 flex flex-wrap justify-between gap-2 border-t border-sombra/40 pt-4">
-            <Button variante="fantasma" tamanho="sm" disabled={pendente} onClick={() => gerar({ pedido: 'mais perguntas de autoavaliação', tipo: 'perguntas', nota })}>
-              <Wand2 className="size-3.5" aria-hidden /> Gerar mais perguntas
-            </Button>
-            {seguinte && (
-              <Button variante="secundario" tamanho="sm" onClick={() => navigate(urlTopico(materia, seguinte.nota))}>
-                Próximo: {seguinte.titulo} →
-              </Button>
-            )}
-          </div>
+          {(anterior || seguinte) && (
+            <div className="mt-4 flex flex-wrap justify-between gap-2 border-t border-sombra/40 pt-4">
+              {anterior ? (
+                <Button variante="fantasma" tamanho="sm" onClick={() => navigate(urlTopico(materia, anterior.nota))}>
+                  ← {anterior.titulo}
+                </Button>
+              ) : (
+                <span />
+              )}
+              {seguinte && (
+                <Button variante="secundario" tamanho="sm" onClick={() => navigate(urlTopico(materia, seguinte.nota))}>
+                  {seguinte.titulo} →
+                </Button>
+              )}
+            </div>
+          )}
         </Card>
         <div className="flex flex-col gap-6">
           <Card titulo="Dúvidas" subtitulo="o Gandalf responde com base nesta nota e nas suas anotações" icone={<MessageCircleQuestion />} cor="musgo">
@@ -474,132 +534,288 @@ export function TopicoTela() {
         </div>
       </div>
       <EnviarMaterial materia={materia} topico={nota} tituloTopico={titulo} aberto={material} onClose={() => setMaterial(false)} />
+      <GerarQuiz materia={materia} topico={nota} tituloTopico={titulo} aberto={quiz} onClose={() => setQuiz(false)} />
+      <Modal
+        aberto={aprofundar !== null}
+        onClose={() => setAprofundar(null)}
+        titulo={`Aprofundar: ${titulo}`}
+        icone={<Wand2 />}
+        cor="sakura"
+        rodape={
+          <>
+            <Button variante="fantasma" onClick={() => setAprofundar(null)}>
+              Cancelar
+            </Button>
+            <Button disabled={pendente} onClick={() => gerar({ pedido: aprofundar ?? '', tipo: 'aprofundar', nota }, () => setAprofundar(null))}>
+              <Wand2 className="size-4" aria-hidden /> Aprofundar tópico
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3">
+          <Textarea
+            rotulo="Algum foco? (opcional)"
+            placeholder="Ex.: mais exemplos práticos; explicar melhor a parte de X; comparar com Y…"
+            value={aprofundar ?? ''}
+            onChange={(e) => setAprofundar(e.target.value)}
+          />
+          <p className="text-xs text-tinta-suave">
+            O Gandalf expande a nota com explicações, exemplos e armadilhas, usando suas anotações e o material enviado, sem perder o que já está nela. Leva alguns minutos e usa a sua cota do Claude.
+          </p>
+        </div>
+      </Modal>
     </div>
   )
 }
 
-// ---------- revisão (flashcards) ----------
+// ---------- quiz (efêmero) ----------
 
-const NIVEIS: Array<{ nivel: NivelRevisao; texto: string; tecla: string; cor: string }> = [
-  { nivel: 'errei', texto: 'Errei', tecla: '1', cor: 'text-erro' },
-  { nivel: 'dificil', texto: 'Difícil', tecla: '2', cor: 'text-madeira-texto' },
-  { nivel: 'facil', texto: 'Fácil', tecla: '3', cor: 'text-musgo-texto' },
-]
-const PESO: Record<NivelRevisao, number> = { errei: 0, dificil: 1, facil: 2 }
+const VEREDITO: Record<Veredito, { cor: Cor; texto: string; pontos: number }> = {
+  certo: { cor: 'musgo', texto: 'Acertou', pontos: 1 },
+  parcial: { cor: 'ocre', texto: 'Quase', pontos: 0.5 },
+  errado: { cor: 'terracota', texto: 'Errou', pontos: 0 },
+}
+const LETRAS = 'ABCDEF'
 
-export function RevisaoTela() {
-  const { materia = '' } = useParams()
-  const [params] = useSearchParams()
-  const nota = params.get('nota')
-  const todas = params.get('todas') === '1'
-  const { data: cartas = [], isPending } = useCartas(materia, { nota, todas })
-  const { data: m } = useMateria(materia)
-  const registrar = useRegistrarRevisao(materia)
+type Resultado = { resposta: string; veredito: Veredito; correcao?: CorrecaoQuiz; salva?: boolean }
+
+/** Texto da anotação gerada por "Salvar como nota". */
+function notaDaQuestao(p: PerguntaQuiz, r: Resultado): string {
+  const partes = [`**Pergunta:** ${p.pergunta}`]
+  if (p.opcoes) partes.push(p.opcoes.map((o, i) => `- ${LETRAS[i]}) ${i === p.correta ? `**${o}** ✓` : o}`).join('\n'))
+  partes.push(`**Minha resposta:** ${r.resposta || '(em branco)'} (${VEREDITO[r.veredito].texto.toLowerCase()})`)
+  partes.push(`**Resposta certa:** ${p.opcoes && p.correta !== null ? `${LETRAS[p.correta]}) ${p.opcoes[p.correta]}` : p.resposta}`)
+  if (r.correcao?.comentario) partes.push(r.correcao.comentario)
+  const extra = r.correcao?.complemento || p.explicacao
+  if (extra) partes.push(extra)
+  return partes.join('\n\n')
+}
+
+function PerguntaAtual({
+  p,
+  materia,
+  resultado,
+  onResultado,
+}: {
+  p: PerguntaQuiz
+  materia: string
+  resultado: Resultado | undefined
+  onResultado: (r: Resultado) => void
+}) {
+  const corrigir = useCorrigirQuiz(materia)
   const toast = useToast()
-  const [i, setI] = useState(0)
-  const [mostrar, setMostrar] = useState(false)
-  // pior nível por tópico (a repetição espaçada é por nota)
-  const [resultados, setResultados] = useState<Record<string, NivelRevisao>>({})
-  const [proximas, setProximas] = useState<Record<string, string | null>>({})
-  const atual: Carta | undefined = cartas[i]
-  const fim = !isPending && cartas.length > 0 && i >= cartas.length
+  const [escolha, setEscolha] = useState<number | null>(null)
+  const [texto, setTexto] = useState('')
 
-  function responder(nivel: NivelRevisao) {
-    if (!atual) return
-    const pior = resultados[atual.nota] && PESO[resultados[atual.nota]] < PESO[nivel] ? resultados[atual.nota] : nivel
-    const novos = { ...resultados, [atual.nota]: pior }
-    setResultados(novos)
-    // última carta deste tópico: grava a revisão dele
-    if (!cartas.slice(i + 1).some((c) => c.nota === atual.nota)) {
-      registrar.mutate(
-        { nota: atual.nota, nivel: pior },
-        { onSuccess: (t) => setProximas((p) => ({ ...p, [atual.nota]: t.revisar })), onError: (e) => toast('erro', e.message) },
-      )
+  function responder(e?: FormEvent) {
+    e?.preventDefault()
+    if (resultado) return
+    if (p.opcoes) {
+      if (escolha === null) return
+      onResultado({ resposta: `${LETRAS[escolha]}) ${p.opcoes[escolha]}`, veredito: escolha === p.correta ? 'certo' : 'errado' })
+      return
     }
-    setMostrar(false)
-    setI((x) => x + 1)
+    if (!texto.trim()) return
+    corrigir.mutate(
+      { pergunta: p.pergunta, resposta_modelo: p.resposta, resposta: texto, topico: p.topico },
+      { onSuccess: (c) => onResultado({ resposta: texto.trim(), veredito: c.veredito, correcao: c }), onError: (err) => toast('erro', err.message) },
+    )
   }
 
-  useEffect(() => {
-    function tecla(e: KeyboardEvent) {
-      if ((e.target as HTMLElement | null)?.matches?.('input, textarea')) return
-      if (!mostrar && (e.key === ' ' || e.key === 'Enter')) {
-        e.preventDefault()
-        setMostrar(true)
-      } else if (mostrar) {
-        const n = NIVEIS.find((x) => x.tecla === e.key)
-        if (n) responder(n.nivel)
-      }
-    }
-    document.addEventListener('keydown', tecla)
-    return () => document.removeEventListener('keydown', tecla)
-  })
+  return (
+    <form onSubmit={responder} className="flex flex-col gap-5">
+      <p className="font-titulo text-2xl leading-snug">{p.pergunta}</p>
+      {p.opcoes ? (
+        <div role="radiogroup" aria-label="Opções" className="flex flex-col gap-2">
+          {p.opcoes.map((o, i) => {
+            const certa = resultado && i === p.correta
+            const errada = resultado && i === escolha && i !== p.correta
+            return (
+              <button
+                key={i}
+                type="button"
+                role="radio"
+                aria-checked={escolha === i}
+                disabled={!!resultado}
+                onClick={() => setEscolha(i)}
+                className={cn(
+                  'flex items-start gap-3 rounded-controle px-4 py-3 text-left transition-shadow disabled:cursor-default',
+                  escolha === i || certa ? 'shadow-cavado-sm' : 'shadow-relevo-sm hover:shadow-relevo',
+                  certa && 'text-musgo-texto',
+                  errada && 'text-erro',
+                  foco,
+                )}
+              >
+                <span className="w-5 shrink-0 font-semibold">{LETRAS[i]})</span>
+                <span className="min-w-0 flex-1">{o}</span>
+                {certa && <Check className="size-4 shrink-0" aria-label="correta" />}
+                {errada && <X className="size-4 shrink-0" aria-label="sua resposta" />}
+              </button>
+            )
+          })}
+        </div>
+      ) : (
+        <textarea
+          aria-label="Sua resposta"
+          placeholder="Escreva sua resposta com suas palavras… (Ctrl+Enter envia)"
+          value={texto}
+          disabled={!!resultado || corrigir.isPending}
+          onChange={(e) => setTexto(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) responder()
+          }}
+          className={cn(cavado, 'min-h-32 w-full resize-y rounded-controle px-4 py-3 placeholder:text-tinta-suave/70 disabled:opacity-80', foco)}
+        />
+      )}
+      {!resultado && (
+        <Button type="submit" className="self-end" disabled={p.opcoes ? escolha === null : !texto.trim() || corrigir.isPending}>
+          {corrigir.isPending ? 'O Gandalf está corrigindo…' : 'Responder'}
+        </Button>
+      )}
+    </form>
+  )
+}
 
-  const acertos = Object.values(resultados).filter((n) => n === 'facil').length
+function Feedback({ p, r }: { p: PerguntaQuiz; r: Resultado }) {
+  const v = VEREDITO[r.veredito]
+  const extra = r.correcao?.complemento || p.explicacao
+  return (
+    <div className="animar-entrada flex flex-col gap-3" aria-live="polite">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge cor={v.cor}>{v.texto}</Badge>
+        {r.correcao?.comentario && <span className="text-sm">{r.correcao.comentario}</span>}
+      </div>
+      <div className="flex flex-col gap-2 rounded-controle p-4 shadow-cavado-sm">
+        <p className="text-sm">
+          <span className="font-semibold">Resposta certa: </span>
+          {p.opcoes && p.correta !== null ? `${LETRAS[p.correta]}) ${p.opcoes[p.correta]}` : p.resposta}
+        </p>
+        {extra && <Markdown texto={extra} className="text-sm" />}
+      </div>
+    </div>
+  )
+}
+
+/** Cada navegação (inclusive "Novo quiz" na mesma URL) começa um quiz do zero. */
+export function QuizTela() {
+  return <QuizSessao key={useLocation().key} />
+}
+
+function QuizSessao() {
+  const { materia = '' } = useParams()
+  const [params] = useSearchParams()
+  const location = useLocation()
+  const navigate = useNavigate()
+  const toast = useToast()
+  const topico = params.get('topico')
+  const tipo: TipoQuiz = params.get('tipo') === 'texto' ? 'texto' : 'multipla'
+  const quantidade = Math.min(MAX_PERGUNTAS_QUIZ, Math.max(1, Number(params.get('n')) || 5))
+  // location.key muda a cada navegação: "Novo quiz" gera outro em vez de reaproveitar o anterior
+  const { data: quiz, isPending, error, refetch, isFetching } = useQuiz(materia, { quantidade, tipo, topico }, location.key)
+  const { data: m } = useMateria(materia)
+  const salvar = useSalvarAnotacao(materia)
+  const [i, setI] = useState(0)
+  const [resultados, setResultados] = useState<Record<number, Resultado>>({})
+
+  const perguntas = quiz?.perguntas ?? []
+  const atual = perguntas[i]
+  const r = resultados[i]
+  const fim = perguntas.length > 0 && i >= perguntas.length
+  const tituloTopico = topico ? (m?.topicos.find((t) => t.nota === topico)?.titulo ?? quiz?.perguntas[0]?.titulo_topico) : null
+  const pontos = Object.values(resultados).reduce((n, x) => n + VEREDITO[x.veredito].pontos, 0)
+  const voltar = topico ? urlTopico(materia, topico) : urlMateria(materia)
+
+  function salvarComoNota() {
+    if (!atual || !r || r.salva) return
+    salvar.mutate(
+      { titulo: `Quiz: ${atual.pergunta.length > 110 ? atual.pergunta.slice(0, 109) + '…' : atual.pergunta}`, texto: notaDaQuestao(atual, r), topico: atual.topico, origem: 'quiz' },
+      {
+        onSuccess: () => {
+          setResultados((x) => ({ ...x, [i]: { ...r, salva: true } }))
+          toast('sucesso', atual.topico ? 'Questão salva nas anotações do tópico' : 'Questão salva nas anotações da matéria')
+        },
+        onError: (err) => toast('erro', err.message),
+      },
+    )
+  }
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
-      <Voltar para={nota ? urlTopico(materia, nota) : urlMateria(materia)} texto={m?.titulo ?? 'Matéria'} />
+      <Voltar para={voltar} texto={tituloTopico ?? m?.titulo ?? 'Matéria'} />
       <header>
-        <h1 className="text-3xl font-semibold tracking-tight">Revisão</h1>
-        {cartas.length > 0 && !fim && (
-          <p className="mt-1 text-tinta-suave">
-            Carta {i + 1} de {cartas.length} · {atual?.titulo}
-          </p>
-        )}
+        <h1 className="text-3xl font-semibold tracking-tight">Quiz{tituloTopico ? `: ${tituloTopico}` : m ? `: ${m.titulo}` : ''}</h1>
+        <p className="mt-1 text-tinta-suave">
+          {TIPOS.find((t) => t.tipo === tipo)?.texto}
+          {perguntas.length > 0 && !fim && ` · pergunta ${i + 1} de ${perguntas.length}`}
+          {atual && !topico && atual.titulo_topico && ` · ${atual.titulo_topico}`}
+        </p>
       </header>
-      {cartas.length > 0 && <ProgressBar rotulo="Progresso" valor={Math.min(i, cartas.length)} max={cartas.length} cor="sakura" mostrarValor={false} />}
+      {perguntas.length > 0 && <ProgressBar rotulo="Andamento do quiz" valor={Math.min(i + (r ? 1 : 0), perguntas.length)} max={perguntas.length} cor="sakura" mostrarValor={false} />}
 
-      {isPending ? (
-        <p className="text-tinta-suave">embaralhando as cartas…</p>
-      ) : cartas.length === 0 ? (
+      {isPending || (isFetching && !quiz) ? (
+        <Card className="min-h-48 items-center justify-center">
+          <Sparkles className="size-6 animate-pulse text-sakura" aria-hidden />
+          <p className="text-tinta-suave">O Gandalf está preparando {quantidade} pergunta(s)…</p>
+        </Card>
+      ) : error ? (
         <EmptyState
-          icone={<CircleCheck />}
-          cor="musgo"
-          titulo={todas || nota ? 'Sem perguntas aqui' : 'Nada para revisar hoje'}
-          descricao={todas || nota ? 'Os tópicos ainda não têm perguntas. Abra um tópico e toque em “Gerar mais perguntas”.' : 'Volte amanhã, ou treine tudo mesmo assim.'}
-          acao={!todas && !nota ? <Link to={urlRevisar(materia, { todas: true })} className={cn('font-semibold text-musgo-texto', foco)}>Treinar tudo</Link> : undefined}
+          icone={<CircleHelp />}
+          cor="terracota"
+          titulo="Não deu para gerar o quiz"
+          descricao={error.message}
+          acao={<Button onClick={() => refetch()}><RotateCcw className="size-4" aria-hidden /> Tentar de novo</Button>}
         />
       ) : fim ? (
-        <Card titulo="Revisão concluída" subtitulo={`${acertos} de ${Object.keys(resultados).length} tópico(s) fáceis`} icone={<Sparkles />} cor="ocre" className="animar-surgir">
-          <ul className="flex flex-col gap-2 text-sm">
-            {Object.entries(resultados).map(([n, nivel]) => (
-              <li key={n} className="flex justify-between gap-2">
-                <span className="font-semibold">{cartas.find((c) => c.nota === n)?.titulo}</span>
-                <span className="text-tinta-suave">
-                  {NIVEIS.find((x) => x.nivel === nivel)?.texto} · volta {proximas[n] ? ddmm(proximas[n]!) : '…'}
-                </span>
-              </li>
-            ))}
-          </ul>
-          <div className="flex justify-end">
-            <Link to={urlMateria(materia)} className={cn('font-semibold text-musgo-texto', foco)}>
-              Voltar à matéria
-            </Link>
+        <Card titulo="Fim do quiz" subtitulo={`${pontos.toLocaleString('pt-BR')} de ${perguntas.length} ponto(s)`} icone={<Sparkles />} cor="ocre" className="animar-surgir">
+          <ol className="flex flex-col gap-2 text-sm">
+            {perguntas.map((p, k) => {
+              const x = resultados[k]
+              return (
+                <li key={k} className="flex items-start justify-between gap-3">
+                  <span className="min-w-0">{k + 1}. {p.pergunta}</span>
+                  <span className="flex shrink-0 items-center gap-1.5">
+                    {x?.salva && <BookmarkCheck className="size-4 text-tinta-suave" aria-label="salva como nota" />}
+                    {x && <Badge cor={VEREDITO[x.veredito].cor}>{VEREDITO[x.veredito].texto}</Badge>}
+                  </span>
+                </li>
+              )
+            })}
+          </ol>
+          <p className="text-xs text-tinta-suave">Este quiz não fica salvo. As questões que você salvou estão nas suas anotações.</p>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button variante="fantasma" onClick={() => navigate(voltar)}>
+              Voltar
+            </Button>
+            <Button onClick={() => navigate(urlQuiz(materia, { quantidade, tipo, topico }), { replace: true })}>
+              <RotateCcw className="size-4" aria-hidden /> Novo quiz
+            </Button>
           </div>
         </Card>
       ) : (
         atual && (
-          <Card key={atual.id} className="animar-surgir min-h-64 justify-between">
-            <p className="font-titulo text-2xl leading-snug">{atual.pergunta}</p>
-            {mostrar ? (
-              <div className="animar-entrada flex flex-col gap-4">
-                <div className="rounded-controle p-4 shadow-cavado-sm">
-                  <Markdown texto={atual.resposta} />
+          <Card key={i} className="animar-surgir gap-5">
+            <PerguntaAtual p={atual} materia={materia} resultado={r} onResultado={(x) => setResultados((y) => ({ ...y, [i]: x }))} />
+            {r && (
+              <>
+                <Feedback p={atual} r={r} />
+                <div className="flex flex-wrap justify-between gap-2 border-t border-sombra/40 pt-4">
+                  <Button variante="fantasma" tamanho="sm" onClick={salvarComoNota} disabled={r.salva || salvar.isPending}>
+                    {r.salva ? <BookmarkCheck className="size-3.5" aria-hidden /> : <Bookmark className="size-3.5" aria-hidden />}
+                    {r.salva ? 'Salva nas anotações' : 'Salvar questão como nota'}
+                  </Button>
+                  <Button tamanho="sm" onClick={() => setI((x) => x + 1)} autoFocus>
+                    {i + 1 < perguntas.length ? (
+                      <>
+                        Próxima <ArrowRight className="size-3.5" aria-hidden />
+                      </>
+                    ) : (
+                      <>
+                        <ListOrdered className="size-3.5" aria-hidden /> Ver resultado
+                      </>
+                    )}
+                  </Button>
                 </div>
-                <p className="text-center text-xs text-tinta-suave">Como foi? (teclas 1, 2, 3)</p>
-                <div className="grid grid-cols-3 gap-2">
-                  {NIVEIS.map((n) => (
-                    <Button key={n.nivel} variante="secundario" className={n.cor} onClick={() => responder(n.nivel)}>
-                      {n.texto}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <Button className="self-center" onClick={() => setMostrar(true)}>
-                <Play className="size-4" aria-hidden /> Mostrar resposta
-              </Button>
+              </>
             )}
           </Card>
         )

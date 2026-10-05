@@ -15,7 +15,7 @@ const Rotinas = tela(() => import('./screens/Rotinas'), 'Rotinas')
 const Estudos = tela(() => import('./screens/Estudos'), 'Estudos')
 const MateriaTela = tela(() => import('./screens/Estudos'), 'MateriaTela')
 const TopicoTela = tela(() => import('./screens/Estudos'), 'TopicoTela')
-const RevisaoTela = tela(() => import('./screens/Estudos'), 'RevisaoTela')
+const QuizTela = tela(() => import('./screens/Estudos'), 'QuizTela')
 const Vault = tela(() => import('./screens/Vault'), 'Vault')
 const Biblioteca = tela(() => import('./screens/Biblioteca'), 'Biblioteca')
 const TemaBibliotecaTela = tela(() => import('./screens/Biblioteca'), 'TemaBibliotecaTela')
@@ -36,7 +36,7 @@ export default function App() {
             <Route path="estudos" element={<Estudos />} />
             <Route path="estudos/:materia" element={<MateriaTela />} />
             <Route path="estudos/:materia/topico" element={<TopicoTela />} />
-            <Route path="estudos/:materia/revisar" element={<RevisaoTela />} />
+            <Route path="estudos/:materia/quiz" element={<QuizTela />} />
             <Route path="biblioteca" element={<Biblioteca />} />
             <Route path="biblioteca/:slug" element={<TemaBibliotecaTela />} />
             <Route path="vault" element={<Vault />} />
