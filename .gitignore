@@ -1,0 +1,22 @@
+.env
+vault/
+
+# Python
+__pycache__/
+.venv/
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+
+.DS_Store
+
+# Dados locais do Bridge (saídas efêmeras etc.): nunca versionar
+bridge/dados/
+
+# Notas particulares do desenvolvimento (ficam só na máquina local)
+PLANO.md
+docs/DECISOES.md
+CLAUDE.local.md
+.claude/
