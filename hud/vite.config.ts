@@ -2,9 +2,9 @@ import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig, loadEnv } from 'vite'
 
-// O .env fica na raiz do repositório e é compartilhado com o Bridge.
-// O HUD fala com o Bridge via proxy em /api (mesma origem; facilita o acesso pelo celular).
-// Em produção o próprio Bridge serve o HUD compilado (hud/dist) e a API em /api.
+// The .env lives at the repository root and is shared with the Bridge.
+// The HUD talks to the Bridge through a proxy at /api (same origin; makes access from the phone easier).
+// In production the Bridge itself serves the built HUD (hud/dist) and the API at /api.
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '..', '')
   const bridge = `http://${env.BRIDGE_HOST || '127.0.0.1'}:${env.BRIDGE_PORT || '8787'}`
@@ -18,7 +18,7 @@ export default defineConfig(({ mode }) => {
         '/api': {
           target: bridge,
           changeOrigin: true,
-          // O Bridge serve a API em /api (mesmo caminho do HUD compilado), então não reescreve.
+          // The Bridge serves the API at /api (same path as the built HUD), so no rewrite.
           ws: true,
         },
       },

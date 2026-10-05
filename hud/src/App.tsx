@@ -2,25 +2,25 @@ import { lazy } from 'react'
 import { BrowserRouter, Route, Routes } from 'react-router'
 import { Layout } from './components/Layout'
 import { ToastProvider } from './components/ui'
-import { Hoje } from './screens/Hoje'
+import { Today } from './screens/Today'
 
-// Hoje carrega junto; as outras telas só quando abertas (bundle inicial menor, melhor no celular).
-const tela = <T extends string>(carregar: () => Promise<Record<T, React.ComponentType>>, nome: T) =>
-  lazy(() => carregar().then((m) => ({ default: m[nome] })))
+// Today loads up front; the other screens only when opened (smaller initial bundle, better on the phone).
+const screen = <T extends string>(load: () => Promise<Record<T, React.ComponentType>>, name: T) =>
+  lazy(() => load().then((m) => ({ default: m[name] })))
 
-const Chat = tela(() => import('./screens/Chat'), 'Chat')
-const Terminais = tela(() => import('./screens/Terminais'), 'Terminais')
-const Skills = tela(() => import('./screens/Skills'), 'Skills')
-const Rotinas = tela(() => import('./screens/Rotinas'), 'Rotinas')
-const Estudos = tela(() => import('./screens/Estudos'), 'Estudos')
-const MateriaTela = tela(() => import('./screens/Estudos'), 'MateriaTela')
-const TopicoTela = tela(() => import('./screens/Estudos'), 'TopicoTela')
-const QuizTela = tela(() => import('./screens/Estudos'), 'QuizTela')
-const Vault = tela(() => import('./screens/Vault'), 'Vault')
-const Biblioteca = tela(() => import('./screens/Biblioteca'), 'Biblioteca')
-const TemaBibliotecaTela = tela(() => import('./screens/Biblioteca'), 'TemaBibliotecaTela')
-const Recibos = tela(() => import('./screens/Recibos'), 'Recibos')
-const UiCatalogo = tela(() => import('./screens/UiCatalogo'), 'UiCatalogo')
+const Chat = screen(() => import('./screens/Chat'), 'Chat')
+const Terminals = screen(() => import('./screens/Terminals'), 'Terminals')
+const Skills = screen(() => import('./screens/Skills'), 'Skills')
+const Routines = screen(() => import('./screens/Routines'), 'Routines')
+const Studies = screen(() => import('./screens/Studies'), 'Studies')
+const SubjectScreen = screen(() => import('./screens/Studies'), 'SubjectScreen')
+const TopicScreen = screen(() => import('./screens/Studies'), 'TopicScreen')
+const QuizScreen = screen(() => import('./screens/Studies'), 'QuizScreen')
+const Vault = screen(() => import('./screens/Vault'), 'Vault')
+const Library = screen(() => import('./screens/Library'), 'Library')
+const LibraryTopicScreen = screen(() => import('./screens/Library'), 'LibraryTopicScreen')
+const Receipts = screen(() => import('./screens/Receipts'), 'Receipts')
+const UiCatalog = screen(() => import('./screens/UiCatalog'), 'UiCatalog')
 
 export default function App() {
   return (
@@ -28,20 +28,20 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route element={<Layout />}>
-            <Route index element={<Hoje />} />
+            <Route index element={<Today />} />
             <Route path="chat" element={<Chat />} />
-            <Route path="terminais" element={<Terminais />} />
+            <Route path="terminals" element={<Terminals />} />
             <Route path="skills" element={<Skills />} />
-            <Route path="rotinas" element={<Rotinas />} />
-            <Route path="estudos" element={<Estudos />} />
-            <Route path="estudos/:materia" element={<MateriaTela />} />
-            <Route path="estudos/:materia/topico" element={<TopicoTela />} />
-            <Route path="estudos/:materia/quiz" element={<QuizTela />} />
-            <Route path="biblioteca" element={<Biblioteca />} />
-            <Route path="biblioteca/:slug" element={<TemaBibliotecaTela />} />
+            <Route path="routines" element={<Routines />} />
+            <Route path="studies" element={<Studies />} />
+            <Route path="studies/:subject" element={<SubjectScreen />} />
+            <Route path="studies/:subject/topic" element={<TopicScreen />} />
+            <Route path="studies/:subject/quiz" element={<QuizScreen />} />
+            <Route path="library" element={<Library />} />
+            <Route path="library/:slug" element={<LibraryTopicScreen />} />
             <Route path="vault" element={<Vault />} />
-            <Route path="recibos" element={<Recibos />} />
-            <Route path="ui" element={<UiCatalogo />} />
+            <Route path="receipts" element={<Receipts />} />
+            <Route path="ui" element={<UiCatalog />} />
           </Route>
         </Routes>
       </BrowserRouter>

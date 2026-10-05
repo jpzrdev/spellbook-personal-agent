@@ -4,78 +4,126 @@ import frontmatter
 import pytest
 
 from app.gandalf import tier1
-from app.vault.reader import ler_tarefas
-from tests.conftest import AGORA, TZ
+from app.vault.reader import read_tasks
+from tests.conftest import NOW, TZ
 
 
 def ctx(vault):
-    return tier1.Contexto(vault=vault, agora=AGORA, tz=TZ)
+    return tier1.Context(vault=vault, now=NOW, tz=TZ)
 
+
+# ---------- English ----------
 
 @pytest.mark.parametrize(
-    "pedido,intent",
+    "request_text,intent",
     [
-        ("o que tenho hoje?", "agenda"),
-        ("O que eu tenho amanhã", "agenda"),
+        ("what do I have today?", "agenda"),
+        ("What do I have tomorrow", "agenda"),
         ("agenda", "agenda"),
-        ("Quais são minhas prioridades?", "prioridades"),
-        ("minhas tarefas", "tarefas"),
-        ("rotinas", "rotinas"),
-        ("adiciona tarefa comprar pão", "adicionar_tarefa"),
-        ("anota: ideia para o TCC", "anotar"),
+        ("What are my priorities?", "priorities"),
+        ("my tasks", "tasks"),
+        ("routines", "routines"),
+        ("add task buy bread", "add_task"),
+        ("note: an idea for the thesis", "note"),
     ],
 )
-def test_intents_reconhecidos(vault, pedido, intent):
-    r = tier1.responder(pedido, ctx(vault))
+def test_recognized_intents(vault, request_text, intent):
+    r = tier1.answer(request_text, ctx(vault))
     assert r is not None and r.intent == intent
 
 
-def test_nao_reconhece_pergunta_aberta(vault):
-    assert tier1.responder("resuma minha última nota sobre limites", ctx(vault)) is None
+def test_does_not_recognize_an_open_question(vault):
+    assert tier1.answer("summarize my last note about limits", ctx(vault)) is None
 
 
-def test_agenda_de_hoje(vault):
-    r = tier1.responder("o que tenho hoje?", ctx(vault))
-    assert "Hoje, sábado, 3 de outubro" in r.texto
-    assert "- 09:00–10:30 Aula de Cálculo II (Sala 204)" in r.texto
-    assert "Revisar limites" in r.texto  # tarefa de hoje
-    assert "Renovar livro" in r.texto  # atrasada
+def test_todays_agenda(vault):
+    r = tier1.answer("what do I have today?", ctx(vault))
+    assert "Today, Saturday, October 3" in r.text
+    assert "- 09:00–10:30 Calculus II lecture (Room 204)" in r.text
+    assert "Review limits" in r.text  # today's task
+    assert "Renew library book" in r.text  # overdue
 
 
-def test_agenda_de_amanha_sem_eventos(vault):
-    r = tier1.responder("o que tenho amanhã", ctx(vault))
-    assert r.dados["data"] == "2026-10-04"
-    assert "Nenhum compromisso" in r.texto
+def test_tomorrows_agenda_without_events(vault):
+    r = tier1.answer("what do I have tomorrow", ctx(vault))
+    assert r.data["date"] == "2026-10-04"
+    assert "Nothing on the calendar" in r.text
 
 
-def test_adicionar_tarefa_com_data_prioridade_e_acentos(vault):
-    r = tier1.responder("Adiciona tarefa estudar séries de Fourier sexta urgente #estudos/calculo", ctx(vault))
-    t = r.dados["tarefa"]
-    assert t["texto"] == "estudar séries de Fourier"
-    assert t["vence"] == "2026-10-09"  # próxima sexta a partir de sábado 03/10
-    assert t["prioridade"] == "alta"
-    assert t["tags"] == ["estudos/calculo"]
-    assert any(x.texto == "estudar séries de Fourier" for x in ler_tarefas(vault))
+def test_add_task_with_date_priority_and_tags(vault):
+    r = tier1.answer("Add task study Fourier series friday urgent #studies/calculus", ctx(vault))
+    x = r.data["task"]
+    assert x["text"] == "study Fourier series"
+    assert x["due"] == "2026-10-09"  # the next Friday from Saturday 10/03
+    assert x["priority"] == "high"
+    assert x["tags"] == ["studies/calculus"]
+    assert any(t.text == "study Fourier series" for t in read_tasks(vault))
 
 
 @pytest.mark.parametrize(
-    "texto,esperado",
+    "text,expected",
     [
-        ("pagar boleto amanhã", date(2026, 10, 4)),
-        ("pagar boleto para 15/10", date(2026, 10, 15)),
-        ("pagar boleto 2026-11-01", date(2026, 11, 1)),
-        ("pagar boleto 01/01", date(2027, 1, 1)),  # dd/mm já passado → ano que vem
-        ("pagar boleto", None),
+        ("pay the bill tomorrow", date(2026, 10, 4)),
+        ("pay the bill by 10/15", date(2026, 10, 15)),  # month/day in English
+        ("pay the bill 2026-11-01", date(2026, 11, 1)),
+        ("pay the bill 1/1", date(2027, 1, 1)),  # already passed → next year
+        ("pay the bill", None),
     ],
 )
-def test_extrair_data(texto, esperado):
-    d, _ = tier1.extrair_data(tier1.normalizar(texto), AGORA.date())
-    assert d == esperado
+def test_extract_date(text, expected):
+    d, _ = tier1.extract_date(tier1.normalize(text), NOW.date())
+    assert d == expected
 
 
-def test_anotar_cria_arquivo_em_raw(vault):
-    r = tier1.responder("anota: comprar presente para a Ana", ctx(vault))
-    arquivo = vault / r.dados["arquivo"]
-    post = frontmatter.load(arquivo)
-    assert post["tipo"] == "captura"
-    assert post.content == "comprar presente para a Ana"
+def test_note_creates_a_file_in_raw(vault):
+    r = tier1.answer("note: buy a present for Anna", ctx(vault))
+    path = vault / r.data["file"]
+    post = frontmatter.load(path)
+    assert post["type"] == "capture"
+    assert post.content == "buy a present for Anna"
+
+
+# ---------- Brazilian Portuguese ----------
+
+@pytest.mark.parametrize(
+    "request_text,intent",
+    [
+        ("o que tenho hoje?", "agenda"),
+        ("O que eu tenho amanhã", "agenda"),
+        ("Quais são minhas prioridades?", "priorities"),
+        ("minhas tarefas", "tasks"),
+        ("rotinas", "routines"),
+        ("adiciona tarefa comprar pão", "add_task"),
+        ("anota: ideia para o TCC", "note"),
+    ],
+)
+def test_recognized_intents_in_portuguese(vault, pt_br, request_text, intent):
+    r = tier1.answer(request_text, ctx(vault))
+    assert r is not None and r.intent == intent
+
+
+def test_agenda_in_portuguese(vault, pt_br):
+    r = tier1.answer("o que tenho hoje?", ctx(vault))
+    assert "Hoje, sábado, 3 de outubro" in r.text
+    assert "- Nenhum compromisso na agenda." in tier1.answer("o que tenho amanhã", ctx(vault)).text
+
+
+def test_add_task_keeps_accents_in_portuguese(vault, pt_br):
+    r = tier1.answer("Adiciona tarefa estudar séries de Fourier sexta urgente #estudos/calculo", ctx(vault))
+    x = r.data["task"]
+    assert x["text"] == "estudar séries de Fourier"
+    assert x["due"] == "2026-10-09" and x["priority"] == "high" and x["tags"] == ["estudos/calculo"]
+    assert r.text == "Tarefa adicionada para 09/10: estudar séries de Fourier"
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("pagar boleto amanhã", date(2026, 10, 4)),
+        ("pagar boleto para 15/10", date(2026, 10, 15)),  # day/month in Portuguese
+        ("pagar boleto 01/01", date(2027, 1, 1)),
+    ],
+)
+def test_extract_date_in_portuguese(pt_br, text, expected):
+    d, _ = tier1.extract_date(tier1.normalize(text), NOW.date())
+    assert d == expected

@@ -1,27 +1,27 @@
 import type { ReactNode } from 'react'
 import { cn } from '../../lib/cn'
 import { IconChip } from './IconChip'
-import { cavado, type Cor } from './styles'
+import { sunken, type Color } from './styles'
 
 type Props = {
-  icone: ReactNode
-  titulo: string
-  descricao?: ReactNode
-  acao?: ReactNode
-  cor?: Cor
+  icon: ReactNode
+  title: string
+  description?: ReactNode
+  action?: ReactNode
+  color?: Color
   className?: string
 }
 
-/** Área cavada com chip de ícone em relevo. */
-export function EmptyState({ icone, titulo, descricao, acao, cor = 'musgo', className }: Props) {
+/** A sunken area with a raised icon chip. */
+export function EmptyState({ icon, title, description, action, color = 'primary', className }: Props) {
   return (
-    <div className={cn(cavado, 'flex flex-col items-center gap-3 rounded-card px-6 py-10 text-center', className)}>
-      <IconChip cor={cor} tamanho="lg">
-        {icone}
+    <div className={cn(sunken, 'flex flex-col items-center gap-3 rounded-card px-6 py-10 text-center', className)}>
+      <IconChip color={color} size="lg">
+        {icon}
       </IconChip>
-      <h3 className="mt-1 text-xl font-semibold">{titulo}</h3>
-      {descricao && <p className="max-w-sm text-tinta-suave">{descricao}</p>}
-      {acao && <div className="mt-2">{acao}</div>}
+      <h3 className="mt-1 text-xl font-semibold">{title}</h3>
+      {description && <p className="max-w-sm text-ink-muted">{description}</p>}
+      {action && <div className="mt-2">{action}</div>}
     </div>
   )
 }

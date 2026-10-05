@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" href="/icone.svg" type="image/svg+xml" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="theme-color" content="#1a1e26" />
@@ -14,10 +14,10 @@
     <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=JetBrains+Mono:wght@400;600&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <title>Gandalf</title>
     <script>
-      // Aplica o tema antes da pintura (mesma lógica de src/lib/tema.ts).
+      // Applies the theme before the first paint (same logic as src/lib/theme.ts).
       try {
-        var t = localStorage.getItem('lifeos-tema') || 'sistema'
-        if (t === 'sistema') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'escuro' : 'claro'
+        var t = localStorage.getItem('gandalf-theme') || 'system'
+        if (t === 'system') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
         document.documentElement.dataset.theme = t
       } catch (e) {}
     </script>

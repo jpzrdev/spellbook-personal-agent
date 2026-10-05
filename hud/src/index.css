@@ -1,329 +1,328 @@
 @import 'tailwindcss';
 
-/* Tokens do design system neumórfico "Cinzento" (paleta do Gandalf).
-   Superfícies têm a cor do fundo e ganham volume só com sombras duplas:
-   `luz` no canto superior esquerdo e `sombra` no inferior direito.
-   Os NOMES dos tokens vêm da paleta anterior (Bonsai) e ficaram por compatibilidade:
-   pergaminho = pedra cinzenta (fundo) · musgo = azul-noite (ação principal) · madeira = cajado ·
-   ocre = luz dourada do cajado · terracota = brasa · sakura = violeta dos fogos · ardosia = prata.
-   pergaminho/luz/sombra/tinta/musgo e as cores de texto trocam no tema escuro; os demais acentos são fixos. */
+/* Tokens of the neumorphic "Grey" design system (Gandalf's palette).
+   Surfaces have the background color and get volume only from double shadows:
+   `highlight` on the top-left corner and `shade` on the bottom-right.
+   surface = grey stone (background) · primary = midnight blue (main action) · wood = the staff ·
+   gold = the staff's golden light · ember = embers · violet = the fireworks' violet · silver.
+   surface/highlight/shade/ink/primary and the text colors change in the dark theme; the other accents are fixed. */
 @theme {
-  --color-pergaminho: #d6d4cf;
-  --color-luz: #eeece8;
-  --color-sombra: #a6a39c;
-  --color-tinta: #262a31;
-  --color-tinta-suave: #4c525c;
+  --color-surface: #d6d4cf;
+  --color-highlight: #eeece8;
+  --color-shade: #a6a39c;
+  --color-ink: #262a31;
+  --color-ink-muted: #4c525c;
 
-  --color-musgo: #3b5378;
-  --color-musgo-claro: #7d93b8;
-  --color-madeira: #7a5434;
-  --color-ocre: #c4912f;
-  --color-terracota: #a8432f;
-  --color-sakura: #8b6bb3;
-  --color-ardosia: #6f7f90;
-  /* Versões das cores para TEXTO (botões e itens ativos têm só o texto colorido), com contraste AA. */
-  --color-musgo-texto: #2f4466;
-  --color-madeira-texto: #6a4529;
-  /* Texto sobre preenchimento musgo (checkbox marcado, Orb ouvindo). */
-  --color-sobre-musgo: #f2f1ee;
-  --color-marfim: #f4f2ec;
+  --color-primary: #3b5378;
+  --color-primary-light: #7d93b8;
+  --color-wood: #7a5434;
+  --color-gold: #c4912f;
+  --color-ember: #a8432f;
+  --color-violet: #8b6bb3;
+  --color-silver: #6f7f90;
+  /* TEXT versions of the colors (buttons and active items only have colored text), with AA contrast. */
+  --color-primary-text: #2f4466;
+  --color-wood-text: #6a4529;
+  /* Text on a primary fill (checked checkbox, listening Orb). */
+  --color-on-primary: #f2f1ee;
+  --color-ivory: #f4f2ec;
   --color-terminal: #16181d;
-  /* Texto de erro com contraste AA sobre o fundo. */
-  --color-erro: #8a2e1f;
+  /* Error text with AA contrast on the background. */
+  --color-danger: #8a2e1f;
 
-  /* Séries de gráfico = identidade dos tiers do Gandalf (T1, T2, T3). Validadas com o
-     validador de paleta do dataviz (CVD, normal, luminosidade, croma) nos dois temas. */
-  --color-serie-1: #3f6b1f;
-  --color-serie-2: #e0a42a;
-  --color-serie-3: #2f6db0;
+  /* Chart series = the identity of Gandalf's tiers (T1, T2, T3). Validated with the
+     dataviz palette validator (CVD, normal, lightness, chroma) in both themes. */
+  --color-series-1: #3f6b1f;
+  --color-series-2: #e0a42a;
+  --color-series-3: #2f6db0;
 
-  --shadow-relevo-sm: 3px 3px 7px var(--color-sombra), -3px -3px 7px var(--color-luz);
-  --shadow-relevo: 6px 6px 14px var(--color-sombra), -6px -6px 14px var(--color-luz);
-  --shadow-relevo-lg: 10px 10px 24px var(--color-sombra), -10px -10px 24px var(--color-luz);
-  --shadow-cavado: inset 4px 4px 8px var(--color-sombra), inset -4px -4px 8px var(--color-luz);
-  --shadow-cavado-sm: inset 2px 2px 4px var(--color-sombra), inset -2px -2px 4px var(--color-luz);
+  --shadow-raised-sm: 3px 3px 7px var(--color-shade), -3px -3px 7px var(--color-highlight);
+  --shadow-raised: 6px 6px 14px var(--color-shade), -6px -6px 14px var(--color-highlight);
+  --shadow-raised-lg: 10px 10px 24px var(--color-shade), -10px -10px 24px var(--color-highlight);
+  --shadow-sunken: inset 4px 4px 8px var(--color-shade), inset -4px -4px 8px var(--color-highlight);
+  --shadow-sunken-sm: inset 2px 2px 4px var(--color-shade), inset -2px -2px 4px var(--color-highlight);
 
-  --radius-controle: 14px;
+  --radius-control: 14px;
   --radius-card: 24px;
-  --radius-pilula: 999px;
+  --radius-pill: 999px;
 
-  --font-titulo: 'Fraunces', Georgia, serif;
-  --font-corpo: 'Manrope', system-ui, sans-serif;
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-body: 'Manrope', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 
-  --animate-orb-pulso: orb-pulso 1.4s ease-out infinite;
-  @keyframes orb-pulso {
+  --animate-orb-pulse: orb-pulse 1.4s ease-out infinite;
+  @keyframes orb-pulse {
     0% { transform: scale(1); opacity: 0.7; }
     100% { transform: scale(1.3); opacity: 0; }
   }
 }
 
-/* Tema escuro ("noite"): o mesmo relevo sobre azul-noite bem escuro, com texto na pedra do tema claro. */
-:root[data-theme='escuro'] {
+/* Dark theme ("night"): the same relief on a very dark midnight blue, with text in the light theme's stone. */
+:root[data-theme='dark'] {
   color-scheme: dark;
-  --color-pergaminho: #1a1e26;
-  --color-luz: #262b35;
-  --color-sombra: #0d1015;
-  --color-tinta: #d6d4cf;
-  --color-tinta-suave: #9aa0aa;
-  --color-musgo: #8aa2cc;
-  --color-musgo-claro: #a9bcdc;
-  --color-musgo-texto: #a3b8de;
-  --color-madeira-texto: #c9a276;
-  --color-sobre-musgo: #1a1e26;
-  --color-serie-1: #3e7a22;
-  --color-serie-2: #bd8628;
-  --color-serie-3: #4c84cf;
-  --color-erro: #f0a08a;
+  --color-surface: #1a1e26;
+  --color-highlight: #262b35;
+  --color-shade: #0d1015;
+  --color-ink: #d6d4cf;
+  --color-ink-muted: #9aa0aa;
+  --color-primary: #8aa2cc;
+  --color-primary-light: #a9bcdc;
+  --color-primary-text: #a3b8de;
+  --color-wood-text: #c9a276;
+  --color-on-primary: #1a1e26;
+  --color-series-1: #3e7a22;
+  --color-series-2: #bd8628;
+  --color-series-3: #4c84cf;
+  --color-danger: #f0a08a;
 }
 
 @layer base {
   body {
-    @apply bg-pergaminho font-corpo text-tinta antialiased;
-    /* Grão de pedra bem sutil. */
+    @apply bg-surface font-body text-ink antialiased;
+    /* A very subtle stone grain. */
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.22 0 0 0 0 0.24 0 0 0 0 0.28 0 0 0 0.07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
   }
   h1, h2, h3 {
-    font-family: var(--font-titulo);
+    font-family: var(--font-display);
   }
 }
 
-/* Textura de veios de madeira (só em destaques: logo, moldura do terminal, detalhes). */
-@utility textura-madeira {
-  background-color: var(--color-madeira);
+/* Wood grain texture (highlights only: logo, terminal frame, details). */
+@utility wood-texture {
+  background-color: var(--color-wood);
   background-image:
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='200' preserveAspectRatio='none'%3E%3Cfilter id='w'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.006 0.16' numOctaves='3' seed='7'/%3E%3CfeColorMatrix values='0 0 0 0 0.24 0 0 0 0 0.14 0 0 0 0 0.07 0 0 0 0.85 -0.12'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23w)'/%3E%3C/svg%3E"),
     linear-gradient(180deg, rgb(255 255 255 / 0.08), rgb(0 0 0 / 0.12));
   background-size: 400px 200px, 100% 100%;
-  color: var(--color-marfim);
+  color: var(--color-ivory);
 }
 
-/* ---------- Mascote do Gandalf (tamagochi do chat) ---------- */
-.mascote svg * {
+/* ---------- Gandalf's mascot (the chat's tamagotchi) ---------- */
+.mascot svg * {
   transform-box: view-box;
 }
-.mascote-corpo {
+.mascot-body {
   transform-origin: 60px 132px;
-  animation: mascote-respirar 3.2s ease-in-out infinite;
+  animation: mascot-breathe 3.2s ease-in-out infinite;
 }
-.mascote-cabeca {
+.mascot-head {
   transform-origin: 60px 80px;
   transition: transform 300ms ease;
 }
-.mascote-olhos {
+.mascot-eyes {
   transform-origin: 60px 65px;
-  animation: mascote-piscar 4.6s infinite;
+  animation: mascot-blink 4.6s infinite;
 }
-.mascote-olhos-cima {
+.mascot-eyes-up {
   transform: translateY(-1.5px);
 }
-.mascote-luz {
-  animation: mascote-luz 2.8s ease-in-out infinite;
+.mascot-glow {
+  animation: mascot-glow 2.8s ease-in-out infinite;
 }
-.mascote-halo {
+.mascot-halo {
   transform-origin: 92px 40px;
-  animation: mascote-halo 2.8s ease-in-out infinite;
+  animation: mascot-halo 2.8s ease-in-out infinite;
 }
-.mascote-barba {
+.mascot-beard {
   transform-origin: 60px 70px;
 }
-.mascote-orbita {
+.mascot-orbit {
   transform-origin: 92px 40px;
-  animation: mascote-girar 1.6s linear infinite;
+  animation: mascot-spin 1.6s linear infinite;
 }
-.mascote-estouro {
+.mascot-burst {
   transform-origin: 60px 60px;
-  animation: mascote-estouro 0.9s ease-out both;
+  animation: mascot-burst 0.9s ease-out both;
 }
-.mascote-flutua {
-  animation: mascote-flutua 1.6s ease-out both;
+.mascot-float {
+  animation: mascot-float 1.6s ease-out both;
 }
-.mascote-z {
-  animation: mascote-z 3s ease-in-out infinite;
+.mascot-z {
+  animation: mascot-z 3s ease-in-out infinite;
 }
-.mascote-z-2 {
+.mascot-z-2 {
   animation-delay: 1.2s;
 }
-.mascote-ondas {
-  animation: mascote-luz 0.5s ease-in-out infinite;
+.mascot-waves {
+  animation: mascot-glow 0.5s ease-in-out infinite;
 }
-.mascote-sobrancelha {
+.mascot-brow {
   transform-origin: 54px 60px;
   transform: translateY(-2px) rotate(-12deg);
 }
 
-.mascote[data-estado='pensando'] .mascote-luz,
-.mascote[data-estado='pensando'] .mascote-halo {
+.mascot[data-state='thinking'] .mascot-glow,
+.mascot[data-state='thinking'] .mascot-halo {
   animation-duration: 0.8s;
 }
-.mascote[data-estado='feliz'] .mascote-corpo {
-  animation: mascote-pulo 0.45s ease-out 3;
+.mascot[data-state='happy'] .mascot-body {
+  animation: mascot-hop 0.45s ease-out 3;
 }
-.mascote[data-estado='carinho'] .mascote-corpo {
-  animation: mascote-pulo 0.5s ease-out 1;
+.mascot[data-state='petted'] .mascot-body {
+  animation: mascot-hop 0.5s ease-out 1;
 }
-.mascote[data-estado='confuso'] .mascote-cabeca {
+.mascot[data-state='confused'] .mascot-head {
   transform: rotate(-9deg);
 }
-.mascote[data-estado='falando'] .mascote-barba {
-  animation: mascote-falar 0.22s ease-in-out infinite alternate;
+.mascot[data-state='talking'] .mascot-beard {
+  animation: mascot-talk 0.22s ease-in-out infinite alternate;
 }
-.mascote[data-estado='dormindo'] .mascote-corpo {
+.mascot[data-state='sleeping'] .mascot-body {
   animation-duration: 5.5s;
 }
-.mascote[data-estado='dormindo'] .mascote-cabeca {
+.mascot[data-state='sleeping'] .mascot-head {
   transform: rotate(6deg) translateY(2px);
 }
-.mascote[data-estado='dormindo'] .mascote-luz,
-.mascote[data-estado='dormindo'] .mascote-halo,
-.mascote[data-estado='cansado'] .mascote-halo {
+.mascot[data-state='sleeping'] .mascot-glow,
+.mascot[data-state='sleeping'] .mascot-halo,
+.mascot[data-state='tired'] .mascot-halo {
   animation: none;
   opacity: 0.15;
 }
-.mascote[data-estado='cansado'] .mascote-cabeca {
+.mascot[data-state='tired'] .mascot-head {
   transform: translateY(2px);
 }
 
-@keyframes mascote-respirar {
+@keyframes mascot-breathe {
   0%, 100% { transform: translateY(0) scale(1); }
   50% { transform: translateY(-1.6px) scale(1.012); }
 }
-@keyframes mascote-piscar {
+@keyframes mascot-blink {
   0%, 93%, 100% { transform: scaleY(1); }
   96% { transform: scaleY(0.1); }
 }
-@keyframes mascote-luz {
+@keyframes mascot-glow {
   0%, 100% { opacity: 0.55; }
   50% { opacity: 1; }
 }
-@keyframes mascote-halo {
+@keyframes mascot-halo {
   0%, 100% { transform: scale(0.85); opacity: 0.15; }
   50% { transform: scale(1.25); opacity: 0.35; }
 }
-@keyframes mascote-girar {
+@keyframes mascot-spin {
   to { transform: rotate(360deg); }
 }
-@keyframes mascote-pulo {
+@keyframes mascot-hop {
   0%, 100% { transform: translateY(0); }
   40% { transform: translateY(-9px); }
 }
-@keyframes mascote-falar {
+@keyframes mascot-talk {
   from { transform: scaleY(1); }
   to { transform: scaleY(1.07); }
 }
-@keyframes mascote-estouro {
+@keyframes mascot-burst {
   from { transform: scale(0.4); opacity: 0; }
   50% { opacity: 1; }
   to { transform: scale(1.15); opacity: 0; }
 }
-@keyframes mascote-flutua {
+@keyframes mascot-float {
   from { transform: translateY(6px); opacity: 0; }
   30% { opacity: 1; }
   to { transform: translateY(-10px); opacity: 0; }
 }
-@keyframes mascote-z {
+@keyframes mascot-z {
   0% { transform: translate(0, 4px); opacity: 0; }
   40% { opacity: 1; }
   100% { transform: translate(6px, -10px); opacity: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .mascote *,
-  .mascote svg * {
+  .mascot *,
+  .mascot svg * {
     animation: none !important;
     transition: none !important;
   }
 }
 
-/* ---------- Movimento da interface ---------- */
-/* Troca de tela: a página nova sobe e aparece. */
-.animar-entrada {
-  animation: entrada 320ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+/* ---------- Interface motion ---------- */
+/* Screen change: the new page rises and fades in. */
+.anim-enter {
+  animation: enter 320ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
 }
-/* Blocos de uma grade entram em cascata (até 12; o resto entra junto com o 12º). */
-.animar-cascata > * {
-  animation: entrada 420ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+/* Blocks of a grid come in as a cascade (up to 12; the rest come in with the 12th). */
+.anim-stagger > * {
+  animation: enter 420ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
 }
-.animar-cascata > :nth-child(2) { animation-delay: 40ms; }
-.animar-cascata > :nth-child(3) { animation-delay: 80ms; }
-.animar-cascata > :nth-child(4) { animation-delay: 120ms; }
-.animar-cascata > :nth-child(5) { animation-delay: 160ms; }
-.animar-cascata > :nth-child(6) { animation-delay: 200ms; }
-.animar-cascata > :nth-child(7) { animation-delay: 240ms; }
-.animar-cascata > :nth-child(8) { animation-delay: 280ms; }
-.animar-cascata > :nth-child(9) { animation-delay: 320ms; }
-.animar-cascata > :nth-child(10) { animation-delay: 360ms; }
-.animar-cascata > :nth-child(11) { animation-delay: 400ms; }
-.animar-cascata > :nth-child(n + 12) { animation-delay: 440ms; }
-/* Painéis (modal, menu "Mais"): crescem do ponto de origem. */
-.animar-surgir {
-  animation: surgir 240ms cubic-bezier(0.2, 0.9, 0.3, 1.15) both;
+.anim-stagger > :nth-child(2) { animation-delay: 40ms; }
+.anim-stagger > :nth-child(3) { animation-delay: 80ms; }
+.anim-stagger > :nth-child(4) { animation-delay: 120ms; }
+.anim-stagger > :nth-child(5) { animation-delay: 160ms; }
+.anim-stagger > :nth-child(6) { animation-delay: 200ms; }
+.anim-stagger > :nth-child(7) { animation-delay: 240ms; }
+.anim-stagger > :nth-child(8) { animation-delay: 280ms; }
+.anim-stagger > :nth-child(9) { animation-delay: 320ms; }
+.anim-stagger > :nth-child(10) { animation-delay: 360ms; }
+.anim-stagger > :nth-child(11) { animation-delay: 400ms; }
+.anim-stagger > :nth-child(n + 12) { animation-delay: 440ms; }
+/* Panels (modal, "More" menu): grow from their origin point. */
+.anim-pop {
+  animation: pop 240ms cubic-bezier(0.2, 0.9, 0.3, 1.15) both;
 }
-.animar-veu {
-  animation: veu 200ms ease-out both;
+.anim-veil {
+  animation: veil 200ms ease-out both;
 }
-.animar-toast {
+.anim-toast {
   animation: toast 360ms cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
 }
-.animar-mensagem {
-  animation: entrada 280ms ease-out both;
+.anim-message {
+  animation: enter 280ms ease-out both;
 }
-/* Logo: ao passar o mouse a estrela do chapéu brilha e o mago inclina. */
-.logo-mago svg {
+/* Logo: on hover the hat's star sparkles and the wizard tilts. */
+.logo-wizard svg {
   transition: transform 300ms cubic-bezier(0.3, 1.4, 0.5, 1);
 }
-.logo-mago:hover svg {
+.logo-wizard:hover svg {
   transform: rotate(-6deg) scale(1.06);
 }
-.logo-mago:hover svg polygon:last-child {
-  animation: estrela-brilho 900ms ease-in-out infinite;
+.logo-wizard:hover svg polygon:last-child {
+  animation: star-twinkle 900ms ease-in-out infinite;
   transform-box: fill-box;
   transform-origin: center;
 }
 
-@keyframes entrada {
+@keyframes enter {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: none; }
 }
-@keyframes surgir {
+@keyframes pop {
   from { opacity: 0; transform: scale(0.94) translateY(6px); }
   to { opacity: 1; transform: none; }
 }
-@keyframes veu {
+@keyframes veil {
   from { opacity: 0; }
 }
 @keyframes toast {
   from { opacity: 0; transform: translateX(24px) scale(0.96); }
   to { opacity: 1; transform: none; }
 }
-@keyframes marcar {
+@keyframes check-pop {
   0% { transform: scale(0.8); }
   60% { transform: scale(1.15); }
   100% { transform: scale(1); }
 }
-@keyframes faisca {
-  0% { opacity: 1; box-shadow: 0 0 0 0 var(--color-ocre), 0 0 0 0 var(--color-ocre); }
+@keyframes spark {
+  0% { opacity: 1; box-shadow: 0 0 0 0 var(--color-gold), 0 0 0 0 var(--color-gold); }
   100% { opacity: 0; box-shadow: 0 0 0 10px transparent, 0 0 12px 6px transparent; }
 }
-@keyframes icone-ativo {
+@keyframes icon-active {
   0% { transform: translateY(0); }
   40% { transform: translateY(-3px) scale(1.1); }
   100% { transform: none; }
 }
-@keyframes estrela-brilho {
+@keyframes star-twinkle {
   0%, 100% { transform: scale(1) rotate(0deg); opacity: 1; }
   50% { transform: scale(1.5) rotate(45deg); opacity: 0.8; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .animar-entrada,
-  .animar-cascata > *,
-  .animar-surgir,
-  .animar-veu,
-  .animar-toast,
-  .animar-mensagem,
-  .logo-mago svg,
-  .logo-mago svg * {
+  .anim-enter,
+  .anim-stagger > *,
+  .anim-pop,
+  .anim-veil,
+  .anim-toast,
+  .anim-message,
+  .logo-wizard svg,
+  .logo-wizard svg * {
     animation: none !important;
     transition: none !important;
   }

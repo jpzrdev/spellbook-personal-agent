@@ -1,4 +1,4 @@
-"""Tier 2 do Gandalf: um modelo rápido (via Claude Code, sem ferramentas) decide responder ou escalar."""
+"""Gandalf's Tier 2: a fast model (through Claude Code, no tools) decides to answer or escalate."""
 
 import json
 import re
@@ -6,102 +6,114 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+from app import locales
 from app.config import get_settings
 from app.gandalf import claude_cli
-from app.gandalf.contexto import montar_contexto
+from app.gandalf.context import build_context
+from app.locales import t
 
 PROMPTS = Path(__file__).parent / "prompts"
-# Personalidade (editável) + regras de decisão do Tier 2. Texto estável ajuda o cache do Claude Code.
-ARQUIVOS_PROMPT = ("personalidade.md", "manual.md", "tier2.md")
+# Personality (editable) + Tier 2 decision rules. Stable text helps Claude Code's cache.
+PROMPT_FILES = ("personality.md", "manual.md", "tier2.md")
 
 ITEM = {
     "type": "object",
     "properties": {
-        "tipo": {"type": "string", "enum": ["lembrete", "evento", "tarefa", "nota"]},
-        "texto": {"type": "string"},
-        "quando": {"type": "string"},
-        "hora": {"type": "string"},
-        "dias_semana": {"type": "array", "items": {"type": "integer"}},
-        "vence": {"type": "string"},
-        "prioridade": {"type": "string"},
-        "titulo": {"type": "string"},
-        "data": {"type": "string"},
-        "dia_inteiro": {"type": "boolean"},
-        "hora_inicio": {"type": "string"},
-        "hora_fim": {"type": "string"},
-        "repetir": {"type": ["string", "null"]},
-        "avisos_min": {"type": "array", "items": {"type": "integer"}},
-        "local": {"type": "string"},
+        "type": {"type": "string", "enum": ["reminder", "event", "task", "note"]},
+        "text": {"type": "string"},
+        "when": {"type": "string"},
+        "time": {"type": "string"},
+        "weekdays": {"type": "array", "items": {"type": "integer"}},
+        "due": {"type": "string"},
+        "priority": {"type": "string"},
+        "title": {"type": "string"},
+        "date": {"type": "string"},
+        "all_day": {"type": "boolean"},
+        "start_time": {"type": "string"},
+        "end_time": {"type": "string"},
+        "repeat": {"type": ["string", "null"]},
+        "reminders_min": {"type": "array", "items": {"type": "integer"}},
+        "location": {"type": "string"},
     },
-    "required": ["tipo"],
+    "required": ["type"],
 }
 
-ESQUEMA = {
+SCHEMA = {
     "type": "object",
     "properties": {
-        "acao": {"type": "string", "enum": ["responder", "escalar", "capturar", "pesquisar"]},
-        "resposta": {"type": "string"},
-        "motivo": {"type": "string"},
-        "tarefa": {"type": "string"},
+        "action": {"type": "string", "enum": ["answer", "escalate", "capture", "research"]},
+        "reply": {"type": "string"},
+        "reason": {"type": "string"},
+        "task": {"type": "string"},
         "skill": {"type": ["string", "null"]},
-        "itens": {"type": "array", "items": ITEM},
-        "tema": {"type": "string"},
-        "consulta": {"type": "string"},
-        "tipo": {"type": "string", "enum": ["pesquisa", "plano"]},
-        "atualizar": {"type": ["string", "null"]},
+        "items": {"type": "array", "items": ITEM},
+        "topic": {"type": "string"},
+        "query": {"type": "string"},
+        "kind": {"type": "string", "enum": ["research", "plan"]},
+        "update": {"type": ["string", "null"]},
     },
-    "required": ["acao"],
+    "required": ["action"],
 }
 
 
 @dataclass
-class Decisao:
-    acao: str  # responder | escalar | capturar | pesquisar
-    resposta: str = ""
-    motivo: str = ""
-    tarefa: str = ""
+class Decision:
+    action: str  # answer | escalate | capture | research
+    reply: str = ""
+    reason: str = ""
+    task: str = ""
     skill: str | None = None
-    itens: list[dict] = field(default_factory=list)
-    pesquisa: dict | None = None  # {tema, consulta, tipo, atualizar}
-    modelo: str | None = None
-    tokens_entrada: int = 0
-    tokens_saida: int = 0
-    custo_usd: float = 0.0
-    tentativas: int = 1
-    avisos: list[str] = field(default_factory=list)
+    items: list[dict] = field(default_factory=list)
+    research: dict | None = None  # {topic, query, kind, update}
+    model: str | None = None
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cost_usd: float = 0.0
+    attempts: int = 1
+    warnings: list[str] = field(default_factory=list)
 
 
-def _extrair_json(texto: str) -> dict | None:
-    """Aceita o JSON puro ou dentro de um bloco ```json```."""
-    texto = texto.strip()
-    if m := re.search(r"```(?:json)?\s*(\{.*?\})\s*```", texto, re.S):
-        texto = m.group(1)
-    elif not texto.startswith("{") and (m := re.search(r"\{.*\}", texto, re.S)):
-        texto = m.group(0)
+def extract_json(text: str) -> dict | None:
+    """Accepts plain JSON or JSON inside a ```json``` block."""
+    text = text.strip()
+    if m := re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.S):
+        text = m.group(1)
+    elif not text.startswith("{") and (m := re.search(r"\{.*\}", text, re.S)):
+        text = m.group(0)
     try:
-        dados = json.loads(texto)
+        data = json.loads(text)
     except json.JSONDecodeError:
         return None
-    return dados if isinstance(dados, dict) else None
+    return data if isinstance(data, dict) else None
 
 
-def _valida(dados: dict | None) -> bool:
-    if not dados:
+def _valid(data: dict | None) -> bool:
+    if not data:
         return False
-    if dados.get("acao") == "responder":
-        return bool(str(dados.get("resposta") or "").strip())
-    if dados.get("acao") == "escalar":
-        return bool(str(dados.get("tarefa") or "").strip())
-    if dados.get("acao") == "pesquisar":
-        return bool(str(dados.get("consulta") or "").strip())
-    if dados.get("acao") == "capturar":
-        itens = dados.get("itens")
-        return isinstance(itens, list) and bool(itens) and all(isinstance(i, dict) and i.get("tipo") for i in itens)
+    if data.get("action") == "answer":
+        return bool(str(data.get("reply") or "").strip())
+    if data.get("action") == "escalate":
+        return bool(str(data.get("task") or "").strip())
+    if data.get("action") == "research":
+        return bool(str(data.get("query") or "").strip())
+    if data.get("action") == "capture":
+        items = data.get("items")
+        return isinstance(items, list) and bool(items) and all(isinstance(i, dict) and i.get("type") for i in items)
     return False
 
 
-def prompt_sistema() -> str:
-    return "\n\n".join((PROMPTS / a).read_text(encoding="utf-8").strip() for a in ARQUIVOS_PROMPT)
+def language_instruction() -> str:
+    name = locales.current().NAME
+    return (
+        "## Language\n\n"
+        f"The user speaks {name}. Write everything the user will read in {name}: `reply`, `reason`, "
+        "item texts and titles, and the research `topic`. Keep the JSON keys and enum values exactly as specified."
+    )
+
+
+def system_prompt() -> str:
+    parts = [(PROMPTS / a).read_text(encoding="utf-8").strip() for a in PROMPT_FILES]
+    return "\n\n".join([*parts, language_instruction()])
 
 
 def _args() -> list[str]:
@@ -111,66 +123,66 @@ def _args() -> list[str]:
         "--no-session-persistence",
         "--strict-mcp-config",
         "--disable-slash-commands",
-        "--system-prompt", prompt_sistema(),
-        "--json-schema", json.dumps(ESQUEMA, ensure_ascii=False),
+        "--system-prompt", system_prompt(),
+        "--json-schema", json.dumps(SCHEMA, ensure_ascii=False),
     ]
 
 
-def decidir(vault: Path, pedido: str, agora: datetime, anterior: list[dict] | None = None,
-            nota: tuple[str, str] | None = None) -> Decisao:
-    """`anterior`: últimas trocas da conversa ({pergunta, resposta}), para entender respostas curtas
-    como "amanhã às 9" depois de o Gandalf perguntar "quando?"."""
-    contexto = montar_contexto(vault, agora)
-    prompt = f"<contexto>\n{contexto}\n</contexto>\n\n"
-    if anterior:
-        trocas = "\n\n".join(f"Usuário: {t['pergunta'].strip()}\nGandalf: {t['resposta'].strip()}" for t in anterior)
-        prompt += f"<conversa_anterior>\n{trocas}\n</conversa_anterior>\n\n"
-    if nota:
-        caminho, texto = nota
-        prompt += f'<nota_em_estudo caminho="{caminho}">\n{texto[:8000]}\n</nota_em_estudo>\n\n'
-    prompt += f"<pedido>\n{pedido.strip()}\n</pedido>"
+def decide(vault: Path, request: str, now: datetime, previous: list[dict] | None = None,
+           note: tuple[str, str] | None = None) -> Decision:
+    """`previous`: the last turns of the conversation ({question, answer}), to understand short replies
+    like "tomorrow at 9" after Gandalf asked "when?"."""
+    context = build_context(vault, now)
+    prompt = f"<context>\n{context}\n</context>\n\n"
+    if previous:
+        turns = "\n\n".join(f"User: {x['question'].strip()}\nGandalf: {x['answer'].strip()}" for x in previous)
+        prompt += f"<previous_conversation>\n{turns}\n</previous_conversation>\n\n"
+    if note:
+        path, text = note
+        prompt += f'<note_being_studied path="{path}">\n{text[:8000]}\n</note_being_studied>\n\n'
+    prompt += f"<request>\n{request.strip()}\n</request>"
 
     total_in = total_out = 0
-    custo = 0.0
-    ultimo = None
-    for tentativa in (1, 2):  # JSON inválido: tenta mais uma vez
-        r = claude_cli.rodar_json(prompt, _args(), cwd=vault)
-        total_in += r.tokens_entrada
-        total_out += r.tokens_saida
-        custo += r.custo_usd
-        ultimo = r
-        dados = r.estruturado if _valida(r.estruturado) else _extrair_json(r.texto)
-        if _valida(dados):
-            skill = dados.get("skill")
-            return Decisao(
-                acao=dados["acao"],
-                resposta=str(dados.get("resposta") or "").strip(),
-                motivo=str(dados.get("motivo") or "").strip(),
-                tarefa=str(dados.get("tarefa") or "").strip(),
+    cost = 0.0
+    last = None
+    for attempt in (1, 2):  # invalid JSON: try once more
+        r = claude_cli.run_json(prompt, _args(), cwd=vault)
+        total_in += r.input_tokens
+        total_out += r.output_tokens
+        cost += r.cost_usd
+        last = r
+        data = r.structured if _valid(r.structured) else extract_json(r.text)
+        if _valid(data):
+            skill = data.get("skill")
+            return Decision(
+                action=data["action"],
+                reply=str(data.get("reply") or "").strip(),
+                reason=str(data.get("reason") or "").strip(),
+                task=str(data.get("task") or "").strip(),
                 skill=skill if isinstance(skill, str) and skill.strip() and skill != "null" else None,
-                itens=(dados.get("itens") or []) if dados["acao"] == "capturar" else [],
-                pesquisa={
-                    "tema": str(dados.get("tema") or "").strip()[:80] or "Pesquisa",
-                    "consulta": str(dados.get("consulta")).strip(),
-                    "tipo": "plano" if dados.get("tipo") == "plano" else "pesquisa",
-                    "atualizar": (str(dados["atualizar"]).strip() or None) if dados.get("atualizar") else None,
-                } if dados["acao"] == "pesquisar" else None,
-                modelo=r.modelo,
-                tokens_entrada=total_in,
-                tokens_saida=total_out,
-                custo_usd=custo,
-                tentativas=tentativa,
+                items=(data.get("items") or []) if data["action"] == "capture" else [],
+                research={
+                    "topic": str(data.get("topic") or "").strip()[:80] or "Research",
+                    "query": str(data.get("query")).strip(),
+                    "kind": "plan" if data.get("kind") == "plan" else "research",
+                    "update": (str(data["update"]).strip() or None) if data.get("update") else None,
+                } if data["action"] == "research" else None,
+                model=r.model,
+                input_tokens=total_in,
+                output_tokens=total_out,
+                cost_usd=cost,
+                attempts=attempt,
             )
 
-    # Depois de 2 tentativas, trata como resposta com o texto bruto.
-    assert ultimo is not None
-    return Decisao(
-        acao="responder",
-        resposta=ultimo.texto.strip() or "Não consegui formular uma resposta agora.",
-        modelo=ultimo.modelo,
-        tokens_entrada=total_in,
-        tokens_saida=total_out,
-        custo_usd=custo,
-        tentativas=2,
-        avisos=["JSON inválido do Tier 2; usada a resposta bruta"],
+    # After 2 attempts, treat the raw text as the answer.
+    assert last is not None
+    return Decision(
+        action="answer",
+        reply=last.text.strip() or t("tier2.no_answer"),
+        model=last.model,
+        input_tokens=total_in,
+        output_tokens=total_out,
+        cost_usd=cost,
+        attempts=2,
+        warnings=["invalid JSON from Tier 2; used the raw answer"],
     )

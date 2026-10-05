@@ -1,9 +1,9 @@
-"""Execução do Claude Code CLI (`claude -p`) como subprocesso.
+"""Running the Claude Code CLI (`claude -p`) as a subprocess.
 
-- O pedido vai pelo stdin (evita limites e problemas de aspas da linha de comando no Windows).
-- No Windows, preferimos o `claude.exe` nativo ao `claude.cmd` do npm (que passa pelo cmd.exe).
-- Tudo é síncrono e roda em threads: o loop asyncio do uvicorn com reload no Windows não
-  suporta subprocessos, então o Tier 3 lê o stdout numa thread e repassa os eventos.
+- The request goes through stdin (avoids command-line length limits and quoting issues on Windows).
+- On Windows we prefer the native `claude.exe` over npm's `claude.cmd` (which goes through cmd.exe).
+- Everything is synchronous and runs in threads: uvicorn's asyncio loop with reload on Windows does
+  not support subprocesses, so Tier 3 reads stdout in a thread and forwards the events.
 """
 
 import json
@@ -19,52 +19,52 @@ from pathlib import Path
 from app.config import get_settings
 
 
-class ClaudeIndisponivel(Exception):
-    """CLI não encontrado ou sem login."""
+class ClaudeUnavailable(Exception):
+    """CLI not found or not logged in."""
 
 
-class ClaudeFalhou(Exception):
+class ClaudeFailed(Exception):
     pass
 
 
-def resolver_comando() -> list[str]:
-    """Prefixo do comando. `CLAUDE_BIN` (opcional) é o caminho do executável."""
-    configurado = get_settings().claude_bin.strip().strip('"')
-    if configurado:
-        # Um .py roda com o Python do Bridge (ex.: o CLI falso dos testes, para demonstrações).
-        # Caminho relativo vale a partir do diretório do Bridge (o subprocesso roda dentro do vault).
-        caminho = str(Path(configurado).resolve()) if ("/" in configurado or "\\" in configurado) else configurado
-        return [sys.executable, caminho] if caminho.endswith(".py") else [caminho]
-    caminho = shutil.which("claude")
-    if not caminho:
-        raise ClaudeIndisponivel(
-            "Claude Code não encontrado. Instale com `npm install -g @anthropic-ai/claude-code` "
-            "e faça login com `claude auth login`."
+def resolve_command() -> list[str]:
+    """Command prefix. `CLAUDE_BIN` (optional) is the path to the executable."""
+    configured = get_settings().claude_bin.strip().strip('"')
+    if configured:
+        # A .py runs with the Bridge's Python (e.g. the tests' fake CLI, for demos).
+        # A relative path is resolved from the Bridge directory (the subprocess runs inside the vault).
+        path = str(Path(configured).resolve()) if ("/" in configured or "\\" in configured) else configured
+        return [sys.executable, path] if path.endswith(".py") else [path]
+    path = shutil.which("claude")
+    if not path:
+        raise ClaudeUnavailable(
+            "Claude Code not found. Install it with `npm install -g @anthropic-ai/claude-code` "
+            "and log in with `claude auth login`."
         )
-    if caminho.lower().endswith((".cmd", ".ps1")):
-        exe = Path(caminho).parent / "node_modules" / "@anthropic-ai" / "claude-code" / "bin" / "claude.exe"
+    if path.lower().endswith((".cmd", ".ps1")):
+        exe = Path(path).parent / "node_modules" / "@anthropic-ai" / "claude-code" / "bin" / "claude.exe"
         if exe.is_file():
             return [str(exe)]
-    return [caminho]
+    return [path]
 
 
-def _ambiente() -> dict[str, str]:
+def _environment() -> dict[str, str]:
     env = os.environ.copy()
-    # Não deixamos uma API key do ambiente desviar o uso da assinatura do usuário.
+    # Don't let an API key in the environment divert usage away from the user's subscription.
     env.pop("ANTHROPIC_API_KEY", None)
     env.setdefault("PYTHONIOENCODING", "utf-8")
     return env
 
 
-def _flags_criacao() -> dict:
+def _creation_flags() -> dict:
     if os.name == "nt":
-        # Grupo próprio para poder encerrar a árvore de processos; sem janela de console.
+        # Own process group so the process tree can be terminated; no console window.
         return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW}
     return {"start_new_session": True}
 
 
-def encerrar(proc: subprocess.Popen) -> None:
-    """Mata o processo e os filhos (o CLI pode abrir subprocessos para ferramentas)."""
+def terminate(proc: subprocess.Popen) -> None:
+    """Kills the process and its children (the CLI may spawn subprocesses for tools)."""
     if proc.poll() is not None:
         return
     if os.name == "nt":
@@ -81,58 +81,58 @@ def encerrar(proc: subprocess.Popen) -> None:
 
 
 @dataclass
-class ResultadoJson:
-    """Saída de `--output-format json`."""
+class JsonResult:
+    """Output of `--output-format json`."""
 
-    texto: str
-    estruturado: dict | None
-    erro: bool
+    text: str
+    structured: dict | None
+    error: bool
     session_id: str | None
-    duracao_ms: int
-    tokens_entrada: int
-    tokens_saida: int
-    custo_usd: float
-    modelo: str | None
-    bruto: dict
+    duration_ms: int
+    input_tokens: int
+    output_tokens: int
+    cost_usd: float
+    model: str | None
+    raw: dict
 
 
 def _tokens(usage: dict | None) -> tuple[int, int]:
     usage = usage or {}
-    entrada = (
+    input_tokens = (
         int(usage.get("input_tokens") or 0)
         + int(usage.get("cache_creation_input_tokens") or 0)
         + int(usage.get("cache_read_input_tokens") or 0)
     )
-    return entrada, int(usage.get("output_tokens") or 0)
+    return input_tokens, int(usage.get("output_tokens") or 0)
 
 
-def _modelo(dados: dict) -> str | None:
-    uso = dados.get("modelUsage")
-    if isinstance(uso, dict) and uso:
-        return next(iter(uso))
-    return dados.get("model")
+def _model(data: dict) -> str | None:
+    usage = data.get("modelUsage")
+    if isinstance(usage, dict) and usage:
+        return next(iter(usage))
+    return data.get("model")
 
 
-def interpretar_resultado(dados: dict) -> ResultadoJson:
-    entrada, saida = _tokens(dados.get("usage"))
-    estruturado = dados.get("structured_output")
-    return ResultadoJson(
-        texto=str(dados.get("result") or ""),
-        estruturado=estruturado if isinstance(estruturado, dict) else None,
-        erro=bool(dados.get("is_error")) or dados.get("subtype") not in (None, "success"),
-        session_id=dados.get("session_id"),
-        duracao_ms=int(dados.get("duration_ms") or 0),
-        tokens_entrada=entrada,
-        tokens_saida=saida,
-        custo_usd=float(dados.get("total_cost_usd") or 0.0),
-        modelo=_modelo(dados),
-        bruto=dados,
+def parse_result(data: dict) -> JsonResult:
+    input_tokens, output_tokens = _tokens(data.get("usage"))
+    structured = data.get("structured_output")
+    return JsonResult(
+        text=str(data.get("result") or ""),
+        structured=structured if isinstance(structured, dict) else None,
+        error=bool(data.get("is_error")) or data.get("subtype") not in (None, "success"),
+        session_id=data.get("session_id"),
+        duration_ms=int(data.get("duration_ms") or 0),
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cost_usd=float(data.get("total_cost_usd") or 0.0),
+        model=_model(data),
+        raw=data,
     )
 
 
-def rodar_json(prompt: str, args: list[str], cwd: Path, timeout_s: float = 120) -> ResultadoJson:
-    """Uma chamada curta e bloqueante (Tier 2). Levanta ClaudeFalhou em erro."""
-    cmd = resolver_comando() + ["-p", "--output-format", "json", *args]
+def run_json(prompt: str, args: list[str], cwd: Path, timeout_s: float = 120) -> JsonResult:
+    """One short, blocking call (Tier 2). Raises ClaudeFailed on error."""
+    cmd = resolve_command() + ["-p", "--output-format", "json", *args]
     try:
         proc = subprocess.run(
             cmd,
@@ -142,34 +142,34 @@ def rodar_json(prompt: str, args: list[str], cwd: Path, timeout_s: float = 120) 
             encoding="utf-8",
             errors="replace",
             cwd=cwd,
-            env=_ambiente(),
+            env=_environment(),
             timeout=timeout_s,
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
         )
     except FileNotFoundError as e:
-        raise ClaudeIndisponivel(str(e)) from e
+        raise ClaudeUnavailable(str(e)) from e
     except subprocess.TimeoutExpired as e:
-        raise ClaudeFalhou(f"Claude Code não respondeu em {timeout_s:.0f}s") from e
+        raise ClaudeFailed(f"Claude Code did not answer within {timeout_s:.0f}s") from e
 
-    saida = proc.stdout.strip()
+    out = proc.stdout.strip()
     try:
-        dados = json.loads(saida.splitlines()[-1]) if saida else None
+        data = json.loads(out.splitlines()[-1]) if out else None
     except json.JSONDecodeError:
-        dados = None
-    if not isinstance(dados, dict):
-        detalhe = (proc.stderr or saida or "sem saída").strip()[-500:]
-        if "login" in detalhe.lower() or "auth" in detalhe.lower():
-            raise ClaudeIndisponivel(f"Claude Code sem login. Rode `claude auth login`. ({detalhe})")
-        raise ClaudeFalhou(f"saída inesperada do Claude Code (código {proc.returncode}): {detalhe}")
-    resultado = interpretar_resultado(dados)
-    if resultado.erro and not resultado.texto:
-        raise ClaudeFalhou(f"Claude Code terminou com erro: {dados.get('subtype')}")
-    return resultado
+        data = None
+    if not isinstance(data, dict):
+        detail = (proc.stderr or out or "no output").strip()[-500:]
+        if "login" in detail.lower() or "auth" in detail.lower():
+            raise ClaudeUnavailable(f"Claude Code is not logged in. Run `claude auth login`. ({detail})")
+        raise ClaudeFailed(f"unexpected output from Claude Code (exit code {proc.returncode}): {detail}")
+    result = parse_result(data)
+    if result.error and not result.text:
+        raise ClaudeFailed(f"Claude Code finished with an error: {data.get('subtype')}")
+    return result
 
 
-def iniciar_stream(prompt: str, args: list[str], cwd: Path) -> subprocess.Popen:
-    """Inicia uma sessão com `--output-format stream-json` (Tier 3). O chamador lê o stdout."""
-    cmd = resolver_comando() + ["-p", "--output-format", "stream-json", "--verbose", *args]
+def start_stream(prompt: str, args: list[str], cwd: Path) -> subprocess.Popen:
+    """Starts a session with `--output-format stream-json` (Tier 3). The caller reads stdout."""
+    cmd = resolve_command() + ["-p", "--output-format", "stream-json", "--verbose", *args]
     try:
         proc = subprocess.Popen(
             cmd,
@@ -180,39 +180,39 @@ def iniciar_stream(prompt: str, args: list[str], cwd: Path) -> subprocess.Popen:
             encoding="utf-8",
             errors="replace",
             cwd=cwd,
-            env=_ambiente(),
+            env=_environment(),
             bufsize=1,
-            **_flags_criacao(),
+            **_creation_flags(),
         )
     except FileNotFoundError as e:
-        raise ClaudeIndisponivel(str(e)) from e
+        raise ClaudeUnavailable(str(e)) from e
     assert proc.stdin is not None
     proc.stdin.write(prompt)
     proc.stdin.close()
     return proc
 
 
-def ler_eventos(proc: subprocess.Popen, ao_ler_linha_invalida: Callable[[str], None] | None = None) -> Iterator[dict]:
-    """Gera os eventos JSON (uma linha cada) do stdout até o processo terminar."""
+def read_events(proc: subprocess.Popen, on_invalid_line: Callable[[str], None] | None = None) -> Iterator[dict]:
+    """Yields the JSON events (one per line) from stdout until the process ends."""
     assert proc.stdout is not None
-    for linha in proc.stdout:
-        linha = linha.strip()
-        if not linha:
+    for line in proc.stdout:
+        line = line.strip()
+        if not line:
             continue
         try:
-            evento = json.loads(linha)
+            event = json.loads(line)
         except json.JSONDecodeError:
-            if ao_ler_linha_invalida:
-                ao_ler_linha_invalida(linha)
+            if on_invalid_line:
+                on_invalid_line(line)
             continue
-        if isinstance(evento, dict):
-            yield evento
+        if isinstance(event, dict):
+            yield event
 
 
-def status_login() -> dict:
-    """`claude auth status` em JSON (usado pelo /health)."""
+def login_status() -> dict:
+    """`claude auth status` as JSON (used by /health)."""
     try:
-        cmd = resolver_comando() + ["auth", "status"]
+        cmd = resolve_command() + ["auth", "status"]
         proc = subprocess.run(
             cmd,
             capture_output=True,
@@ -220,13 +220,12 @@ def status_login() -> dict:
             encoding="utf-8",
             errors="replace",
             timeout=20,
-            env=_ambiente(),
+            env=_environment(),
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
         )
-        dados = json.loads(proc.stdout or "{}")
-        return {"instalado": True, "logado": bool(dados.get("loggedIn")), "metodo": dados.get("authMethod")}
-    except ClaudeIndisponivel:
-        return {"instalado": False, "logado": False, "metodo": None}
+        data = json.loads(proc.stdout or "{}")
+        return {"installed": True, "logged_in": bool(data.get("loggedIn")), "method": data.get("authMethod")}
+    except ClaudeUnavailable:
+        return {"installed": False, "logged_in": False, "method": None}
     except (subprocess.TimeoutExpired, json.JSONDecodeError, OSError):
-        return {"instalado": True, "logado": False, "metodo": None}
-
+        return {"installed": True, "logged_in": False, "method": None}

@@ -1,4 +1,7 @@
-"""Tier 1 do Gandalf: intents por regras (PT-BR) respondidas direto do vault. Sem rede, sem IA."""
+"""Gandalf's Tier 1: rule-based intents answered straight from the vault. No network, no AI.
+
+The rules (regexes) and the replies come from the user's language (`app.locales`).
+"""
 
 import re
 import unicodedata
@@ -8,271 +11,265 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from app import locales
+from app.config import get_settings
+from app.locales import t
 from app.vault import reader, writer
-from app.vault.tasks import Prioridade, Task, ordenar_prioridades
-
-DIAS_SEMANA = ["segunda", "terca", "quarta", "quinta", "sexta", "sabado", "domingo"]
-NOMES_DIA = ["segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"]
-NOMES_MES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho",
-             "agosto", "setembro", "outubro", "novembro", "dezembro"]
+from app.vault.tasks import Priority, Task, sort_by_priority
 
 
 @dataclass
-class Contexto:
+class Context:
     vault: Path
-    agora: datetime
+    now: datetime
     tz: ZoneInfo
-    origem: str = "hud"
+    source: str = "hud"
 
     @property
-    def hoje(self) -> date:
-        return self.agora.date()
+    def today(self) -> date:
+        return self.now.date()
 
 
 @dataclass
-class Resposta:
+class Reply:
     intent: str
-    texto: str
-    dados: dict = field(default_factory=dict)
+    text: str
+    data: dict = field(default_factory=dict)
 
 
-def normalizar(texto: str) -> str:
-    """Minúsculas, sem acentos e sem pontuação final, para casar regex de forma tolerante."""
-    sem_acento = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode()
-    return re.sub(r"\s+", " ", sem_acento.lower()).strip(" ?!.")
+def normalize(text: str) -> str:
+    """Lowercase, no accents and no trailing punctuation, to match regexes loosely."""
+    ascii_text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
+    return re.sub(r"\s+", " ", ascii_text.lower()).strip(" ?!.")
 
 
-def data_por_extenso(d: date) -> str:
-    return f"{NOMES_DIA[d.weekday()]}, {d.day} de {NOMES_MES[d.month - 1]}"
+def date_long(d: date) -> str:
+    return locales.date_long(d)
 
 
-# ---------- interpretação de datas e prioridade em texto livre ----------
+# ---------- dates and priority in free text ----------
 
-DATA_DDMM_RE = re.compile(r"\b(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?\b")
-DATA_ISO_RE = re.compile(r"\b(\d{4}-\d{2}-\d{2})\b")
+DATE_SLASH_RE = re.compile(r"\b(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?\b")
+DATE_ISO_RE = re.compile(r"\b(\d{4}-\d{2}-\d{2})\b")
 
 
-def extrair_data(texto_norm: str, hoje: date) -> tuple[date | None, str]:
-    """Acha uma data no texto normalizado e devolve (data, texto sem a expressão)."""
-    padroes: list[tuple[str, Callable[[re.Match], date]]] = [
-        (r"\b(?:para |pra )?depois de amanha\b", lambda m: hoje + timedelta(days=2)),
-        (r"\b(?:para |pra )?amanha\b", lambda m: hoje + timedelta(days=1)),
-        (r"\b(?:para |pra )?hoje\b", lambda m: hoje),
+def extract_date(text_norm: str, today: date) -> tuple[date | None, str]:
+    """Finds a date in the normalized text and returns (date, text without the expression)."""
+    loc = locales.current()
+    patterns: list[tuple[str, Callable[[re.Match], date]]] = [
+        (pattern, lambda m, days=days: today + timedelta(days=days)) for pattern, days in loc.RELATIVE_DAYS
     ]
-    for i, dia in enumerate(DIAS_SEMANA):
-        def proximo(m, i=i):
-            delta = (i - hoje.weekday()) % 7 or 7
-            return hoje + timedelta(days=delta)
-        padroes.append((rf"\b(?:para |pra |na |no |ate )?(?:proxim[oa] )?{dia}(?:-feira)?\b", proximo))
+    for i, day in enumerate(loc.WEEKDAYS_NORM):
+        def upcoming(m, i=i):
+            delta = (i - today.weekday()) % 7 or 7
+            return today + timedelta(days=delta)
+        patterns.append((loc.weekday_pattern(day), upcoming))
 
-    for padrao, calcular in padroes:
-        if m := re.search(padrao, texto_norm):
-            return calcular(m), (texto_norm[: m.start()] + texto_norm[m.end():])
-    if m := DATA_ISO_RE.search(texto_norm):
-        return date.fromisoformat(m.group(1)), texto_norm.replace(m.group(0), "")
-    if m := DATA_DDMM_RE.search(texto_norm):
-        dia, mes, ano = int(m.group(1)), int(m.group(2)), m.group(3)
-        ano_i = int(ano) + (2000 if ano and len(ano) == 2 else 0) if ano else hoje.year
+    for pattern, compute in patterns:
+        if m := re.search(pattern, text_norm):
+            return compute(m), (text_norm[: m.start()] + text_norm[m.end():])
+    if m := DATE_ISO_RE.search(text_norm):
+        return date.fromisoformat(m.group(1)), text_norm.replace(m.group(0), "")
+    if m := DATE_SLASH_RE.search(text_norm):
+        first, second, year = int(m.group(1)), int(m.group(2)), m.group(3)
+        day, month = (first, second) if loc.DAY_FIRST else (second, first)
+        year_i = int(year) + (2000 if year and len(year) == 2 else 0) if year else today.year
         try:
-            d = date(ano_i, mes, dia)
+            d = date(year_i, month, day)
         except ValueError:
-            return None, texto_norm
-        if not ano and d < hoje:
+            return None, text_norm
+        if not year and d < today:
             d = d.replace(year=d.year + 1)
-        return d, texto_norm.replace(m.group(0), "")
-    return None, texto_norm
+        return d, text_norm.replace(m.group(0), "")
+    return None, text_norm
 
 
-def _limpar_conectores(texto: str) -> str:
-    texto = re.sub(r"\s+(para|pra|ate|no|na|em)\s*$", "", texto.strip())
-    return re.sub(r"\s{2,}", " ", texto).strip(" ,:-")
+def _strip_connectors(text: str) -> str:
+    text = locales.current().TRAILING_WORDS_RE.sub("", text.strip())
+    return re.sub(r"\s{2,}", " ", text).strip(" ,:-")
 
 
 # ---------- intents ----------
 
-def _formatar_eventos(eventos: list[reader.Evento]) -> list[str]:
-    linhas = []
-    for e in eventos:
-        if e.inicio:
-            hora = f"{e.inicio}–{e.fim}" if e.fim else e.inicio
+def _format_events(events: list[reader.AgendaEvent]) -> list[str]:
+    lines = []
+    for e in events:
+        if e.start:
+            hour = f"{e.start}–{e.end}" if e.end else e.start
         else:
-            hora = "dia todo"
-        local = f" ({e.local})" if e.local else ""
-        linhas.append(f"- {hora} {e.titulo}{local}")
-    return linhas
+            hour = t("all_day")
+        location = f" ({e.location})" if e.location else ""
+        lines.append(f"- {hour} {e.title}{location}")
+    return lines
 
 
-def tarefa_dict(t: Task) -> dict:
+def task_dict(x: Task) -> dict:
     return {
-        "id": t.id,
-        "texto": t.texto,
-        "concluida": t.concluida,
-        "vence": t.vence.isoformat() if t.vence else None,
-        "concluida_em": t.concluida_em.isoformat() if t.concluida_em else None,
-        "prioridade": t.prioridade,
-        "tags": t.tags,
+        "id": x.id,
+        "text": x.text,
+        "done": x.done,
+        "due": x.due.isoformat() if x.due else None,
+        "done_on": x.done_on.isoformat() if x.done_on else None,
+        "priority": x.priority,
+        "tags": x.tags,
     }
 
 
-def _formatar_tarefa(t: Task, hoje: date) -> str:
+def _format_task(x: Task, today: date) -> str:
+    short = locales.current().short_date
     extra = []
-    if t.vence:
-        if t.vence < hoje:
-            extra.append(f"atrasada desde {t.vence:%d/%m}")
-        elif t.vence == hoje:
-            extra.append("hoje")
+    if x.due:
+        if x.due < today:
+            extra.append(t("task.overdue_since", date=short(x.due)))
+        elif x.due == today:
+            extra.append(t("task.due_today"))
         else:
-            extra.append(f"até {t.vence:%d/%m}")
-    if t.prioridade in ("maxima", "alta"):
-        extra.append("prioridade alta")
-    return f"- {t.texto}" + (f" ({', '.join(extra)})" if extra else "")
+            extra.append(t("task.due_by", date=short(x.due)))
+    if x.priority in ("highest", "high"):
+        extra.append(t("task.high_priority"))
+    return f"- {x.text}" + (f" ({', '.join(extra)})" if extra else "")
 
 
-def intent_agenda(ctx: Contexto, m: re.Match) -> Resposta:
-    dia = ctx.hoje + timedelta(days=1) if m.group("quando") and "amanha" in m.group("quando") else ctx.hoje
-    rotulo = "amanhã" if dia != ctx.hoje else "hoje"
-    eventos = reader.ler_agenda(ctx.vault, dia)
-    tarefas = [t for t in ordenar_prioridades(reader.ler_tarefas(ctx.vault), dia) if t.vence and t.vence <= dia]
+def intent_agenda(ctx: Context, m: re.Match) -> Reply:
+    tomorrow = bool(m.group("when")) and locales.current().TOMORROW_WORD in m.group("when")
+    day = ctx.today + timedelta(days=1) if tomorrow else ctx.today
+    label = t("tomorrow") if tomorrow else t("today")
+    events = reader.read_agenda(ctx.vault, day)
+    tasks = [x for x in sort_by_priority(reader.read_tasks(ctx.vault), day) if x.due and x.due <= day]
 
-    linhas = [f"**{rotulo.capitalize()}, {data_por_extenso(dia)}**"]
-    linhas += _formatar_eventos(eventos) if eventos else ["- Nenhum compromisso na agenda."]
-    if tarefas:
-        linhas += ["", f"Tarefas para {rotulo}:"] + [_formatar_tarefa(t, ctx.hoje) for t in tarefas]
-    return Resposta(
+    lines = [t("agenda.title", label=label.capitalize(), date=date_long(day))]
+    lines += _format_events(events) if events else [t("agenda.empty")]
+    if tasks:
+        lines += ["", t("agenda.tasks_for", label=label)] + [_format_task(x, ctx.today) for x in tasks]
+    return Reply(
         "agenda",
-        "\n".join(linhas),
-        {"data": dia.isoformat(), "eventos": [e.__dict__ for e in eventos], "tarefas": [tarefa_dict(t) for t in tarefas]},
+        "\n".join(lines),
+        {"date": day.isoformat(), "events": [e.__dict__ for e in events], "tasks": [task_dict(x) for x in tasks]},
     )
 
 
-def intent_prioridades(ctx: Contexto, m: re.Match) -> Resposta:
-    top = ordenar_prioridades(reader.ler_tarefas(ctx.vault), ctx.hoje)[:3]
+def intent_priorities(ctx: Context, m: re.Match) -> Reply:
+    top = sort_by_priority(reader.read_tasks(ctx.vault), ctx.today)[:3]
     if not top:
-        return Resposta("prioridades", "Nenhuma tarefa aberta. 🌱", {"tarefas": []})
-    linhas = ["Suas 3 prioridades:"] + [_formatar_tarefa(t, ctx.hoje) for t in top]
-    return Resposta("prioridades", "\n".join(linhas), {"tarefas": [tarefa_dict(t) for t in top]})
+        return Reply("priorities", t("priorities.none"), {"tasks": []})
+    lines = [t("priorities.title")] + [_format_task(x, ctx.today) for x in top]
+    return Reply("priorities", "\n".join(lines), {"tasks": [task_dict(x) for x in top]})
 
 
-def intent_tarefas(ctx: Contexto, m: re.Match) -> Resposta:
-    abertas = ordenar_prioridades(reader.ler_tarefas(ctx.vault), ctx.hoje)
-    if not abertas:
-        return Resposta("tarefas", "Nenhuma tarefa aberta. 🌱", {"tarefas": []})
-    mostrar = abertas[:10]
-    linhas = [f"Você tem {len(abertas)} tarefa(s) aberta(s):"] + [_formatar_tarefa(t, ctx.hoje) for t in mostrar]
-    if len(abertas) > len(mostrar):
-        linhas.append(f"…e mais {len(abertas) - len(mostrar)}.")
-    return Resposta("tarefas", "\n".join(linhas), {"tarefas": [tarefa_dict(t) for t in abertas]})
+def intent_tasks(ctx: Context, m: re.Match) -> Reply:
+    open_tasks = sort_by_priority(reader.read_tasks(ctx.vault), ctx.today)
+    if not open_tasks:
+        return Reply("tasks", t("priorities.none"), {"tasks": []})
+    shown = open_tasks[:10]
+    lines = [t("tasks.title", count=len(open_tasks))] + [_format_task(x, ctx.today) for x in shown]
+    if len(open_tasks) > len(shown):
+        lines.append(t("tasks.more", count=len(open_tasks) - len(shown)))
+    return Reply("tasks", "\n".join(lines), {"tasks": [task_dict(x) for x in open_tasks]})
 
 
-def intent_adicionar_tarefa(ctx: Contexto, m: re.Match) -> Resposta:
-    original = m.group("resto")
-    # Trabalhamos no texto normalizado só para achar data/prioridade; o texto salvo mantém acentos.
-    norm = normalizar(original)
-    vence, sem_data = extrair_data(norm, ctx.hoje)
-    prioridade: Prioridade | None = None
-    if re.search(r"\b(urgente|importante|prioridade alta)\b", sem_data):
-        prioridade = "alta"
-        sem_data = re.sub(r"\b(urgente|importante|prioridade alta)\b", "", sem_data)
+def intent_add_task(ctx: Context, m: re.Match) -> Reply:
+    original = m.group("rest")
+    # We work on the normalized text only to find date/priority; the saved text keeps its accents.
+    norm = normalize(original)
+    due, without_date = extract_date(norm, ctx.today)
+    priority: Priority | None = None
+    high = locales.current().HIGH_PRIORITY_RE
+    if high.search(without_date):
+        priority = "high"
+        without_date = high.sub("", without_date)
     tags = re.findall(r"#([\w/-]+)", original)
 
-    # Recupera o texto com acentos: remove do original as mesmas palavras que saíram do normalizado.
-    palavras_mantidas = set(_limpar_conectores(re.sub(r"#[\w/-]+", "", sem_data)).split())
-    texto = " ".join(
-        p for p in re.sub(r"#[\w/-]+", "", original).split() if normalizar(p) in palavras_mantidas
+    # Recover the accented text: drop from the original the same words that left the normalized one.
+    kept_words = set(_strip_connectors(re.sub(r"#[\w/-]+", "", without_date)).split())
+    text = " ".join(
+        w for w in re.sub(r"#[\w/-]+", "", original).split() if normalize(w) in kept_words
     )
-    texto = _limpar_conectores(texto) or original.strip()
+    text = _strip_connectors(text) or original.strip()
 
-    tarefa = writer.adicionar_tarefa(ctx.vault, texto, vence=vence, prioridade=prioridade, tags=tags)
-    detalhe = f" para {tarefa.vence:%d/%m}" if tarefa.vence else ""
-    return Resposta("adicionar_tarefa", f"Tarefa adicionada{detalhe}: {tarefa.texto}", {"tarefa": tarefa_dict(tarefa)})
-
-
-# Data, hora ou cara de compromisso numa anotação: pode ser lembrete/evento, o Tier 2 decide.
-SINAL_DE_DATA_RE = re.compile(
-    r"\b(hoje|amanha|ontem|depois de amanha|segunda|terca|quarta|quinta|sexta|sabado|domingo|"
-    r"aniversario|niver|consulta|reuniao|terapia|prova|lembra|lembrar|avisa|todo dia|toda|todos os|"
-    r"janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b"
-    r"|\b\d{1,2}/\d{1,2}\b|\b\d{1,2}(?::\d{2}|h\d{0,2})\b"
-)
+    task = writer.add_task(ctx.vault, text, due=due, priority=priority, tags=tags)
+    due_text = t("task.added_due", date=locales.current().short_date(task.due)) if task.due else ""
+    return Reply("add_task", t("task.added", due=due_text, text=task.text), {"task": task_dict(task)})
 
 
-def intent_anotar(ctx: Contexto, m: re.Match) -> Resposta | None:
-    texto = m.group("resto").strip()
-    if SINAL_DE_DATA_RE.search(normalizar(texto)):
+def intent_note(ctx: Context, m: re.Match) -> Reply | None:
+    text = m.group("rest").strip()
+    if locales.current().DATE_HINT_RE.search(normalize(text)):
         return None
-    caminho = writer.salvar_raw(ctx.vault, texto, ctx.agora, ctx.origem)
-    rel = caminho.relative_to(ctx.vault).as_posix()
-    return Resposta("anotar", f"Anotado em `{rel}`.", {"arquivo": rel})
+    path = writer.save_raw(ctx.vault, text, ctx.now, ctx.source)
+    rel = path.relative_to(ctx.vault).as_posix()
+    return Reply("note", t("note.saved", path=rel), {"file": rel})
 
 
-def intent_lembretes(ctx: Contexto, m: re.Match) -> Resposta:
-    from app.gandalf.triagem import descrever_quando, descrever_recorrencia
-    from app.lembretes import lembrete_json
-    from app.vault import lembretes
+def intent_reminders(ctx: Context, m: re.Match) -> Reply:
+    from app.gandalf.triage import describe_recurrence, describe_when
+    from app.reminders import reminder_json
+    from app.vault import reminders
 
-    pendentes = [x for x in lembretes.ler(ctx.vault, ctx.tz) if not x.concluido]
-    if not pendentes:
-        return Resposta("lembretes", "Nenhum lembrete pendente.", {"lembretes": []})
-    unicos = sorted((x for x in pendentes if x.quando), key=lambda x: x.quando)
-    recorrentes = [x for x in pendentes if x.recorrente]
-    linhas = ["Seus lembretes:"]
-    linhas += [f"- {descrever_quando(x.quando, ctx.agora)}: {x.texto}" for x in unicos]
-    linhas += [f"- {descrever_recorrencia(x.recorrencia)}: {x.texto}" for x in recorrentes]
-    return Resposta("lembretes", "\n".join(linhas), {"lembretes": [lembrete_json(x) for x in unicos + recorrentes]})
+    pending = [x for x in reminders.read(ctx.vault, ctx.tz) if not x.done]
+    if not pending:
+        return Reply("reminders", t("reminders.none"), {"reminders": []})
+    one_off = sorted((x for x in pending if x.when), key=lambda x: x.when)
+    recurring = [x for x in pending if x.recurring]
+    lines = [t("reminders.title")]
+    lines += [f"- {describe_when(x.when, ctx.now)}: {x.text}" for x in one_off]
+    lines += [f"- {describe_recurrence(x.recurrence)}: {x.text}" for x in recurring]
+    return Reply("reminders", "\n".join(lines), {"reminders": [reminder_json(x) for x in one_off + recurring]})
 
 
-def intent_rotinas(ctx: Contexto, m: re.Match) -> Resposta:
-    rotinas = reader.ler_rotinas(ctx.vault)
-    if not rotinas:
-        return Resposta("rotinas", "Nenhuma rotina cadastrada em vida/rotinas/.", {"rotinas": []})
-    linhas = ["Suas rotinas:"] + [
-        f"- {r.nome}: {r.quando} ({'ativa' if r.ativa else 'pausada'})" for r in rotinas
+def intent_routines(ctx: Context, m: re.Match) -> Reply:
+    from app import cron
+
+    routines = reader.read_routines(ctx.vault)
+    if not routines:
+        return Reply("routines", t("routines.none"), {"routines": []})
+    language = get_settings().language
+    lines = [t("routines.title")] + [
+        f"- {r.name}: {cron.describe(r.cron, language)} ({t('routine.active') if r.active else t('routine.paused')})"
+        for r in routines
     ]
-    return Resposta("rotinas", "\n".join(linhas), {"rotinas": [r.__dict__ for r in rotinas]})
+    return Reply("routines", "\n".join(lines), {"routines": [r.__dict__ for r in routines]})
 
 
-# Ordem importa: adicionar/anotar antes de "tarefas" (que é mais genérico).
-# Os padrões rodam sobre o texto normalizado; grupos "resto" são recortados do texto original.
-INTENTS: list[tuple[re.Pattern, Callable[[Contexto, re.Match], Resposta]]] = [
-    (re.compile(r"^(?:(?:gandalf|jev),? )?(?:adiciona|adicionar|adicione|add|cria|criar|crie|nova|novo)(?: uma)? tarefa:? (?P<resto>.+)$"), intent_adicionar_tarefa),
-    (re.compile(r"^(?:(?:gandalf|jev),? )?(?:anota|anote|anotar|captura|capturar):? (?P<resto>.+)$"), intent_anotar),
-    (re.compile(r"^(?:(?:gandalf|jev),? )?(?:quais (?:sao )?(?:os )?)?(?:meus )?lembretes(?: pendentes| de hoje)?$"), intent_lembretes),
-    (re.compile(r"^(?:(?:gandalf|jev),? )?(?:o que (?:eu )?tenho|qual (?:e )?(?:a )?minha agenda|minha agenda|agenda|compromissos|meus compromissos)(?: (?:para |pra |de )?(?P<quando>hoje|amanha))?$"), intent_agenda),
-    (re.compile(r"^(?:(?:gandalf|jev),? )?(?:quais (?:sao )?(?:as )?)?(?:minhas )?prioridades(?: de hoje| do dia)?$"), intent_prioridades),
-    (re.compile(r"^(?:(?:gandalf|jev),? )?(?:quais (?:sao )?(?:as )?)?(?:minhas )?tarefas(?: (?:de hoje|pendentes|abertas))?$"), intent_tarefas),
-    (re.compile(r"^(?:(?:gandalf|jev),? )?(?:quais (?:sao )?(?:as )?)?(?:minhas )?rotinas$"), intent_rotinas),
-]
+HANDLERS: dict[str, Callable[[Context, re.Match], Reply | None]] = {
+    "add_task": intent_add_task,
+    "note": intent_note,
+    "reminders": intent_reminders,
+    "agenda": intent_agenda,
+    "priorities": intent_priorities,
+    "tasks": intent_tasks,
+    "routines": intent_routines,
+}
 
 
-def responder(texto: str, ctx: Contexto) -> Resposta | None:
-    """Tenta casar o pedido com um intent. None = não é Tier 1."""
-    from app.gandalf import triagem
+def answer(text: str, ctx: Context) -> Reply | None:
+    """Tries to match the request with an intent. None = not Tier 1."""
+    from app.gandalf import triage
 
-    if lembrete := triagem.interpretar_lembrete(texto, ctx.agora):
-        resposta, dados = triagem.criar_lembrete(ctx.vault, ctx.tz, lembrete, ctx.agora)
-        return Resposta("lembrete", resposta, {"lembretes": [dados]})
-    norm = normalizar(texto)
-    for padrao, handler in INTENTS:
-        m = padrao.match(norm)
+    if reminder := triage.parse_reminder(text, ctx.now):
+        reply, data = triage.create_reminder(ctx.vault, ctx.tz, reminder, ctx.now)
+        return Reply("reminder", reply, {"reminders": [data]})
+    norm = normalize(text)
+    for intent, pattern in locales.current().INTENTS:
+        m = re.match(pattern, norm)
         if not m:
             continue
-        if "resto" in padrao.groupindex:
-            # Recorta o "resto" do texto original (mesmo comprimento final, já que só tiramos acentos).
-            m = _MatchOriginal(m, texto, norm)
-        if (r := handler(ctx, m)) is not None:  # handler pode recusar (ex.: anotação com data)
+        if "rest" in m.re.groupindex:
+            # Cut "rest" from the original text (same final length, since we only removed accents).
+            m = _OriginalMatch(m, text, norm)
+        if (r := HANDLERS[intent](ctx, m)) is not None:  # a handler may decline (e.g. a note with a date)
             return r
     return None
 
 
-class _MatchOriginal:
-    """Faz `group('resto')` devolver o trecho com acentos/maiúsculas do texto original."""
+class _OriginalMatch:
+    """Makes `group('rest')` return the excerpt with the original accents/capitals."""
 
     def __init__(self, m: re.Match, original: str, norm: str):
         self._m = m
-        palavras_norm = norm.split()
-        palavras_orig = re.sub(r"\s+", " ", original.strip()).rstrip(" ?!.").split()
-        inicio = len(norm[: m.start("resto")].split())
-        self._resto = " ".join(palavras_orig[inicio:]) if len(palavras_orig) == len(palavras_norm) else m.group("resto")
+        norm_words = norm.split()
+        original_words = re.sub(r"\s+", " ", original.strip()).rstrip(" ?!.").split()
+        start = len(norm[: m.start("rest")].split())
+        self._rest = " ".join(original_words[start:]) if len(original_words) == len(norm_words) else m.group("rest")
 
-    def group(self, nome):
-        return self._resto if nome == "resto" else self._m.group(nome)
+    def group(self, name):
+        return self._rest if name == "rest" else self._m.group(name)

@@ -1,60 +1,60 @@
 import { Search } from 'lucide-react'
 import { useId, type InputHTMLAttributes } from 'react'
 import { cn } from '../../lib/cn'
-import { cavado, foco } from './styles'
+import { focusRing, sunken } from './styles'
 
 type Props = InputHTMLAttributes<HTMLInputElement> & {
-  rotulo?: string
-  dica?: string
-  erro?: string
+  label?: string
+  hint?: string
+  error?: string
 }
 
-const campo = cn(
-  cavado,
-  'h-11 w-full rounded-controle px-4 font-corpo placeholder:text-tinta-suave/70',
+const field = cn(
+  sunken,
+  'h-11 w-full rounded-control px-4 font-body placeholder:text-ink-muted/70',
   'disabled:cursor-not-allowed disabled:opacity-45',
-  foco,
+  focusRing,
 )
 
-/** Campo de texto cavado. */
-export function Input({ rotulo, dica, erro, id, className, ...props }: Props) {
-  const gerado = useId()
-  const inputId = id ?? gerado
-  const descricaoId = `${inputId}-desc`
+/** A sunken text field. */
+export function Input({ label, hint, error, id, className, ...props }: Props) {
+  const generated = useId()
+  const inputId = id ?? generated
+  const descriptionId = `${inputId}-desc`
   return (
     <div className={cn('flex flex-col gap-2', className)}>
-      {rotulo && (
+      {label && (
         <label htmlFor={inputId} className="text-sm font-semibold">
-          {rotulo}
+          {label}
         </label>
       )}
       <input
         id={inputId}
-        aria-invalid={erro ? true : undefined}
-        aria-describedby={erro || dica ? descricaoId : undefined}
-        className={cn(campo, erro && 'outline-2 outline-terracota/70')}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error || hint ? descriptionId : undefined}
+        className={cn(field, error && 'outline-2 outline-ember/70')}
         {...props}
       />
-      {(erro || dica) && (
-        <p id={descricaoId} className={cn('text-sm', erro ? 'font-semibold text-erro' : 'text-tinta-suave')}>
-          {erro ?? dica}
+      {(error || hint) && (
+        <p id={descriptionId} className={cn('text-sm', error ? 'font-semibold text-danger' : 'text-ink-muted')}>
+          {error ?? hint}
         </p>
       )}
     </div>
   )
 }
 
-type SearchProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> & { rotulo: string }
+type SearchProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> & { label: string }
 
-/** Campo de busca com ícone. O rótulo vira aria-label. */
-export function SearchInput({ rotulo, className, ...props }: SearchProps) {
+/** A search field with an icon. The label becomes the aria-label. */
+export function SearchInput({ label, className, ...props }: SearchProps) {
   return (
     <div className={cn('relative', className)}>
       <Search
         aria-hidden
-        className="pointer-events-none absolute top-1/2 left-4 size-4.5 -translate-y-1/2 text-tinta-suave"
+        className="pointer-events-none absolute top-1/2 left-4 size-4.5 -translate-y-1/2 text-ink-muted"
       />
-      <input type="search" aria-label={rotulo} className={cn(campo, 'rounded-pilula pl-11')} {...props} />
+      <input type="search" aria-label={label} className={cn(field, 'rounded-pill pl-11')} {...props} />
     </div>
   )
 }

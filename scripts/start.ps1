@@ -1,4 +1,4 @@
-# Sobe o Bridge e o HUD juntos (Windows). Ctrl+C encerra os dois.
+# Starts the Bridge and the HUD together (Windows). Ctrl+C stops both.
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 
@@ -8,7 +8,7 @@ if (-not (Test-Path "$root\.env")) {
     [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
     $token = [Convert]::ToBase64String($bytes) -replace '[+/=]', ''
     (Get-Content "$root\.env") -replace '^BRIDGE_TOKEN=$', "BRIDGE_TOKEN=$token" | Set-Content -Encoding utf8 "$root\.env"
-    Write-Host '.env criado a partir do .env.example (token gerado).'
+    Write-Host '.env created from .env.example (token generated).'
 }
 
 Push-Location "$root\bridge"

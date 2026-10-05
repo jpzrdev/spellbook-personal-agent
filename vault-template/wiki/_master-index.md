@@ -1,13 +1,13 @@
 ---
-tipo: indice
-tags: [indice]
-criado: 2026-10-02
-fontes: []
+type: index
+tags: [index]
+created: 2026-10-02
+sources: []
 ---
-# Índice geral
+# Master index
 
-Um link + 1 linha por tema. Mantido pela IA.
+One link + 1 line per topic. Maintained by the AI.
 
-- [[wiki/estudos/_index|Estudos]]: matérias e conceitos estudados.
-- [[wiki/pessoal/_index|Pessoal]]: saúde, finanças e projetos.
-- [[wiki/sobre-mim/perfil|Sobre mim]]: preferências, objetivos e contexto.
+- [[wiki/studies/_index|Studies]]: subjects and concepts being studied.
+- [[wiki/personal/_index|Personal]]: health, finances and projects.
+- [[wiki/about-me/profile|About me]]: preferences, goals and context.

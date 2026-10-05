@@ -1,8 +1,8 @@
-"""Roteador do Gandalf: decide o tier de cada pedido e grava o recibo.
+"""Gandalf's router: picks the tier for each request and writes the receipt.
 
-Tier 1 (regras, sem IA) → Tier 2 (Claude Code rápido, decide responder ou escalar)
-→ Tier 3 (sessão do Claude Code em segundo plano). Um recibo por pedido: o Tier 3 grava o
-seu ao terminar, somando os tokens do Tier 2 que o escalou.
+Tier 1 (rules, no AI) → Tier 2 (fast Claude Code, decides to answer or escalate)
+→ Tier 3 (background Claude Code session). One receipt per request: Tier 3 writes its own
+when it finishes, adding the tokens of the Tier 2 call that escalated it.
 """
 
 import time
@@ -12,157 +12,149 @@ from pathlib import Path
 
 import frontmatter
 
-from app import clock
+from app import clock, library
 from app.config import get_settings
-from app import biblioteca
-from app.gandalf import tier1, tier2, tier3, triagem
-from app.receipts import Recibo, gravar_recibo
+from app.gandalf import tier1, tier2, tier3, triage
+from app.locales import t
+from app.receipts import RECEIPTS, Receipt, write_receipt
 
-NAO_ENTENDI_TIER1 = (
-    "Esse pedido não está nos meus feitiços rápidos, amigo. Os que conheço de cor: "
-    "\"o que tenho hoje/amanhã?\", \"minhas prioridades\", \"minhas tarefas\", "
-    "\"adiciona tarefa …\", \"anota …\", \"me lembra de … em 30 min\", \"meus lembretes\" e \"minhas rotinas\"."
+UPDATE_CONTEXT = (
+    "\n\nThe user already has saved material about this (below). Research what is missing or has changed "
+    "and deliver only what is new or corrected, saying what changed.\n\n<already_saved>\n{saved}\n</already_saved>"
 )
 
 
 @dataclass
-class RespostaGandalf:
+class GandalfReply:
     id: str | None
     tier: int
     intent: str | None
-    entendeu: bool
-    resposta: str
-    duracao_ms: int
-    dados: dict = field(default_factory=dict)
-    sessao_id: str | None = None
-    precisa_confirmar: bool = False
+    understood: bool
+    reply: str
+    duration_ms: int
+    data: dict = field(default_factory=dict)
+    session_id: str | None = None
+    needs_confirmation: bool = False
 
 
-def chamadas_ia_hoje(vault: Path, dia: date) -> int:
-    """Recibos de hoje com tier 2 ou 3 (para o limite diário)."""
-    pasta = vault / "recibos" / f"{dia:%Y}" / f"{dia:%m}"
+def ai_calls_today(vault: Path, day: date) -> int:
+    """Today's receipts with tier 2 or 3 (for the daily limit)."""
+    folder = vault / RECEIPTS / f"{day:%Y}" / f"{day:%m}"
     total = 0
-    for arquivo in pasta.glob(f"{dia.isoformat()}-*.md"):
+    for path in folder.glob(f"{day.isoformat()}-*.md"):
         try:
-            if int(frontmatter.load(arquivo).get("tier") or 0) >= 2:
+            if int(frontmatter.load(path).get("tier") or 0) >= 2:
                 total += 1
         except Exception:
             continue
     return total
 
 
-def perguntar(
+def ask(
     vault: Path,
-    texto: str,
-    origem: str = "hud",
-    forcar_tier: int | None = None,
-    confirmar: bool = False,
-    anterior: list[dict] | None = None,
-    nota: tuple[str, str] | None = None,
-) -> RespostaGandalf:
-    inicio = time.perf_counter()
-    agora = clock.now()
+    text: str,
+    source: str = "hud",
+    force_tier: int | None = None,
+    confirm: bool = False,
+    previous: list[dict] | None = None,
+    note: tuple[str, str] | None = None,
+) -> GandalfReply:
+    start = time.perf_counter()
+    now = clock.now()
 
     def ms() -> int:
-        return round((time.perf_counter() - inicio) * 1000)
+        return round((time.perf_counter() - start) * 1000)
 
     # ---------- Tier 1 ----------
-    if forcar_tier in (None, 1) and not nota:  # pergunta sobre uma nota: direto para a IA
-        ctx = tier1.Contexto(vault=vault, agora=agora, tz=clock.tz(), origem=origem)
-        r = tier1.responder(texto, ctx)
-        if r or forcar_tier == 1:
-            resposta = r.texto if r else NAO_ENTENDI_TIER1
-            duracao = ms()
-            rid, _ = gravar_recibo(
+    if force_tier in (None, 1) and not note:  # a question about a note goes straight to the AI
+        ctx = tier1.Context(vault=vault, now=now, tz=clock.tz(), source=source)
+        r = tier1.answer(text, ctx)
+        if r or force_tier == 1:
+            reply = r.text if r else t("router.not_understood")
+            duration = ms()
+            rid, _ = write_receipt(
                 vault,
-                Recibo(texto, resposta, origem, 1, agora, duracao, intent=r.intent if r else "nao_entendido"),
+                Receipt(text, reply, source, 1, now, duration, intent=r.intent if r else "not_understood"),
             )
-            return RespostaGandalf(rid, 1, r.intent if r else None, r is not None, resposta, duracao, r.dados if r else {})
+            return GandalfReply(rid, 1, r.intent if r else None, r is not None, reply, duration, r.data if r else {})
 
-    # ---------- limite diário de IA ----------
-    limite = get_settings().limite_diario_chamadas
-    if not confirmar and limite > 0:
-        feitas = chamadas_ia_hoje(vault, agora.date())
-        if feitas >= limite:
-            return RespostaGandalf(
+    # ---------- daily AI limit ----------
+    limit = get_settings().daily_call_limit
+    if not confirm and limit > 0:
+        used = ai_calls_today(vault, now.date())
+        if used >= limit:
+            return GandalfReply(
                 None, 0, None, False,
-                f"Você já usou {feitas} chamadas de IA hoje (limite {limite}). Confirme para continuar.",
-                ms(), {"feitas": feitas, "limite": limite}, precisa_confirmar=True,
+                t("router.limit", used=used, limit=limit),
+                ms(), {"used": used, "limit": limit}, needs_confirmation=True,
             )
 
-    gerenciador = tier3.gerenciador(vault)
+    manager = tier3.manager(vault)
 
-    # ---------- Tier 3 direto ----------
-    if forcar_tier == 3:
-        s = gerenciador.criar(texto, origem=origem)
-        return RespostaGandalf(None, 3, "claude_code", True, "Abri uma sessão do Claude Code para isso.", ms(), sessao_id=s.id)
+    # ---------- straight to Tier 3 ----------
+    if force_tier == 3:
+        s = manager.create(text, source=source)
+        return GandalfReply(None, 3, "claude_code", True, t("router.tier3"), ms(), session_id=s.id)
 
     # ---------- Tier 2 ----------
-    d = tier2.decidir(vault, texto, agora, anterior, nota)
-    if d.acao == "escalar":
-        s = gerenciador.criar(
-            d.tarefa + (f"\n\n(A pergunta é sobre a nota `{nota[0]}`.)" if nota else ""),
-            pedido=texto,
-            origem=origem,
+    d = tier2.decide(vault, text, now, previous, note)
+    if d.action == "escalate":
+        s = manager.create(
+            d.task + (f"\n\n(The question is about the note `{note[0]}`.)" if note else ""),
+            request=text,
+            source=source,
             skill=d.skill,
-            tokens_previos=(d.tokens_entrada, d.tokens_saida, d.custo_usd),
+            previous_tokens=(d.input_tokens, d.output_tokens, d.cost_usd),
         )
-        motivo = d.motivo or "Isso precisa de trabalho no vault; abri uma sessão do Claude Code."
-        return RespostaGandalf(
-            None, 3, f"skill:{d.skill}" if d.skill else "claude_code", True, motivo, ms(),
-            {"tarefa": d.tarefa, "skill": d.skill}, sessao_id=s.id,
+        reason = d.reason or t("router.escalated")
+        return GandalfReply(
+            None, 3, f"skill:{d.skill}" if d.skill else "claude_code", True, reason, ms(),
+            {"task": d.task, "skill": d.skill}, session_id=s.id,
         )
 
-    if d.acao == "pesquisar":
-        p = d.pesquisa or {}
-        tarefa = p["consulta"]
-        if p.get("atualizar"):
+    if d.action == "research":
+        p = d.research or {}
+        task = p["query"]
+        if p.get("update"):
             try:
-                guardado = biblioteca.contexto_para_atualizar(vault, p["atualizar"])
-                tarefa += (
-                    "\n\nO usuário já tem um material guardado sobre isso (abaixo). Pesquise o que falta ou mudou "
-                    "e entregue só o que é novo ou corrigido, dizendo o que mudou.\n\n<ja_guardado>\n"
-                    + guardado + "\n</ja_guardado>"
-                )
-            except (FileNotFoundError, biblioteca.TemaInvalido):
-                p["atualizar"] = None
-        s = gerenciador.criar(
-            tarefa,
-            pedido=texto,
-            origem=origem,
-            skill="pesquisar",
-            saida="pesquisa",
-            pesquisa={"tema": p["tema"], "tipo": p["tipo"], "pedido": texto, "slug": p.get("atualizar")},
-            tokens_previos=(d.tokens_entrada, d.tokens_saida, d.custo_usd),
+                task += UPDATE_CONTEXT.format(saved=library.context_for_update(vault, p["update"]))
+            except (FileNotFoundError, library.InvalidTopic):
+                p["update"] = None
+        s = manager.create(
+            task,
+            request=text,
+            source=source,
+            skill="research",
+            output="research",
+            research={"topic": p["topic"], "kind": p["kind"], "request": text, "slug": p.get("update")},
+            previous_tokens=(d.input_tokens, d.output_tokens, d.cost_usd),
         )
-        resposta = (
-            f"Vou pesquisar na web: **{p['tema']}**. Quando terminar, o resultado aparece aqui"
-            " e você decide se guarda no vault."
+        return GandalfReply(
+            None, 3, "research", True, t("router.research", topic=p["topic"]), ms(), {"research": {**p}}, session_id=s.id,
         )
-        return RespostaGandalf(None, 3, "pesquisar", True, resposta, ms(), {"pesquisa": {**p}}, sessao_id=s.id)
 
-    if d.acao == "capturar":
-        resposta, dados = triagem.executar(vault, clock.tz(), d.itens, agora, texto, origem)
-        duracao = ms()
-        rid, _ = gravar_recibo(
+    if d.action == "capture":
+        reply, data = triage.execute(vault, clock.tz(), d.items, now, text, source)
+        duration = ms()
+        rid, _ = write_receipt(
             vault,
-            Recibo(
-                texto, resposta, origem, 2, agora, duracao,
-                intent="capturar", modelo=d.modelo,
-                tokens_entrada=d.tokens_entrada, tokens_saida=d.tokens_saida,
-                custo_estimado_usd=round(d.custo_usd, 6),
+            Receipt(
+                text, reply, source, 2, now, duration,
+                intent="capture", model=d.model,
+                input_tokens=d.input_tokens, output_tokens=d.output_tokens,
+                estimated_cost_usd=round(d.cost_usd, 6),
             ),
         )
-        return RespostaGandalf(rid, 2, "capturar", True, resposta, duracao, dados)
+        return GandalfReply(rid, 2, "capture", True, reply, duration, data)
 
-    duracao = ms()
-    rid, _ = gravar_recibo(
+    duration = ms()
+    rid, _ = write_receipt(
         vault,
-        Recibo(
-            texto, d.resposta, origem, 2, agora, duracao,
-            intent="responder", modelo=d.modelo,
-            tokens_entrada=d.tokens_entrada, tokens_saida=d.tokens_saida,
-            custo_estimado_usd=round(d.custo_usd, 6),
+        Receipt(
+            text, d.reply, source, 2, now, duration,
+            intent="answer", model=d.model,
+            input_tokens=d.input_tokens, output_tokens=d.output_tokens,
+            estimated_cost_usd=round(d.cost_usd, 6),
         ),
     )
-    return RespostaGandalf(rid, 2, "responder", True, d.resposta, duracao, {"avisos": d.avisos} if d.avisos else {})
+    return GandalfReply(rid, 2, "answer", True, d.reply, duration, {"warnings": d.warnings} if d.warnings else {})

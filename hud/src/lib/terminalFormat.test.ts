@@ -1,49 +1,49 @@
 import { describe, expect, it } from 'vitest'
-import { formatarEvento } from './terminalFormat'
+import { formatEvent } from './terminalFormat'
 
-// eslint-disable-next-line no-control-regex -- remove os códigos ANSI de cor de propósito
-const semAnsi = (linhas: string[]) => linhas.map((l) => l.replace(/\x1b\[[0-9;]*m/g, ''))
+// eslint-disable-next-line no-control-regex -- strips the ANSI color codes on purpose
+const noAnsi = (lines: string[]) => lines.map((l) => l.replace(/\x1b\[[0-9;]*m/g, ''))
 
-describe('formatarEvento', () => {
-  it('init mostra o modelo', () => {
-    expect(semAnsi(formatarEvento({ type: 'system', subtype: 'init', model: 'claude-sonnet-5-5' }))).toEqual([
-      '● sessão iniciada · claude-sonnet-5-5',
+describe('formatEvent', () => {
+  it('init shows the model', () => {
+    expect(noAnsi(formatEvent({ type: 'system', subtype: 'init', model: 'claude-sonnet-5-5' }))).toEqual([
+      '● session started · claude-sonnet-5-5',
     ])
   })
 
-  it('assistant mostra texto e ferramentas', () => {
-    const linhas = semAnsi(
-      formatarEvento({
+  it('assistant shows text and tools', () => {
+    const lines = noAnsi(
+      formatEvent({
         type: 'assistant',
         message: {
           content: [
-            { type: 'text', text: 'Vou ler o índice.' },
+            { type: 'text', text: "I'll read the index." },
             { type: 'tool_use', name: 'Read', input: { file_path: 'wiki/_master-index.md' } },
           ],
         },
       }),
     )
-    expect(linhas).toEqual(['Vou ler o índice.', '⏺ Read(wiki/_master-index.md)'])
+    expect(lines).toEqual(["I'll read the index.", '⏺ Read(wiki/_master-index.md)'])
   })
 
-  it('tool_result é resumido em 3 linhas', () => {
-    const [linha] = semAnsi(
-      formatarEvento({
+  it('tool_result is summarized in 3 lines', () => {
+    const [line] = noAnsi(
+      formatEvent({
         type: 'user',
         message: { content: [{ type: 'tool_result', content: 'a\nb\nc\nd\ne' }] },
       }),
     )
-    expect(linha).toContain('⎿ a')
-    expect(linha).toContain('(+2 linhas)')
+    expect(line).toContain('⎿ a')
+    expect(line).toContain('(+2 lines)')
   })
 
-  it('result de sucesso e de erro', () => {
-    expect(semAnsi(formatarEvento({ type: 'result', subtype: 'success', duration_ms: 1500 }))).toContain('✓ concluído em 1.5s')
-    expect(semAnsi(formatarEvento({ type: 'result', subtype: 'error_max_turns', is_error: true }))[1]).toContain('erro')
+  it('success and error results', () => {
+    expect(noAnsi(formatEvent({ type: 'result', subtype: 'success', duration_ms: 1500 }))).toContain('✓ done in 1.5s')
+    expect(noAnsi(formatEvent({ type: 'result', subtype: 'error_max_turns', is_error: true }))[1]).toContain('error')
   })
 
-  it('ignora eventos desconhecidos e fim ok', () => {
-    expect(formatarEvento({ type: 'stream_event' })).toEqual([])
-    expect(formatarEvento({ type: 'lifeos_fim', status: 'ok' })).toEqual([])
+  it('ignores unknown events and an ok end', () => {
+    expect(formatEvent({ type: 'stream_event' })).toEqual([])
+    expect(formatEvent({ type: 'gandalf_end', status: 'ok' })).toEqual([])
   })
 })

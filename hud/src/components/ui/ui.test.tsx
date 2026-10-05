@@ -18,20 +18,20 @@ import {
 } from '.'
 
 describe('Button', () => {
-  it('aplica a cor da variante e dispara onClick', async () => {
+  it('applies the variant color and fires onClick', async () => {
     const onClick = vi.fn()
     render(
-      <Button variante="primario" onClick={onClick}>
-        Executar
+      <Button variant="primary" onClick={onClick}>
+        Run
       </Button>,
     )
-    const botao = screen.getByRole('button', { name: 'Executar' })
-    expect(botao).toHaveClass('text-musgo-texto', 'bg-pergaminho', 'rounded-controle', 'shadow-relevo-sm')
-    await userEvent.click(botao)
+    const button = screen.getByRole('button', { name: 'Run' })
+    expect(button).toHaveClass('text-primary-text', 'bg-surface', 'rounded-control', 'shadow-raised-sm')
+    await userEvent.click(button)
     expect(onClick).toHaveBeenCalledOnce()
   })
 
-  it('não dispara quando desabilitado', async () => {
+  it("doesn't fire when disabled", async () => {
     const onClick = vi.fn()
     render(
       <Button disabled onClick={onClick}>
@@ -45,24 +45,24 @@ describe('Button', () => {
 
 describe('TierBadge', () => {
   it.each([
-    [1, 'bg-serie-1/20'],
-    [2, 'bg-serie-2/25'],
-    [3, 'bg-serie-3/20'],
-  ] as const)('tier %i usa %s', (tier, classe) => {
+    [1, 'bg-series-1/20'],
+    [2, 'bg-series-2/25'],
+    [3, 'bg-series-3/20'],
+  ] as const)('tier %i uses %s', (tier, cls) => {
     render(<TierBadge tier={tier} />)
-    expect(screen.getByText(new RegExp(`^T${tier}`))).toHaveClass(classe)
+    expect(screen.getByText(new RegExp(`^T${tier}`))).toHaveClass(cls)
   })
 })
 
 describe('Tabs', () => {
-  function Exemplo() {
-    const [valor, setValor] = useState('a')
+  function Example() {
+    const [value, setValue] = useState('a')
     return (
       <Tabs
-        rotulo="abas"
-        valor={valor}
-        onChange={setValor}
-        itens={[
+        label="tabs"
+        value={value}
+        onChange={setValue}
+        items={[
           { id: 'a', label: 'A' },
           { id: 'b', label: 'B' },
         ]}
@@ -70,8 +70,8 @@ describe('Tabs', () => {
     )
   }
 
-  it('troca com clique e com as setas', async () => {
-    render(<Exemplo />)
+  it('switches on click and with the arrow keys', async () => {
+    render(<Example />)
     const [a, b] = screen.getAllByRole('tab')
     expect(a).toHaveAttribute('aria-selected', 'true')
     await userEvent.click(b)
@@ -82,43 +82,43 @@ describe('Tabs', () => {
   })
 })
 
-describe('Toggle e Checkbox', () => {
-  it('Toggle expõe role switch com aria-checked', async () => {
+describe('Toggle and Checkbox', () => {
+  it('Toggle exposes a switch role with aria-checked', async () => {
     const onChange = vi.fn()
-    render(<Toggle ligado={false} onChange={onChange} rotulo="Rotina ativa" />)
-    const sw = screen.getByRole('switch', { name: 'Rotina ativa' })
+    render(<Toggle on={false} onChange={onChange} label="Routine active" />)
+    const sw = screen.getByRole('switch', { name: 'Routine active' })
     expect(sw).toHaveAttribute('aria-checked', 'false')
     await userEvent.click(sw)
     expect(onChange).toHaveBeenCalledWith(true)
   })
 
-  it('Checkbox marca pelo rótulo', async () => {
-    render(<Checkbox rotulo="Lista 3" />)
-    const cb = screen.getByRole('checkbox', { name: 'Lista 3' })
-    await userEvent.click(screen.getByText('Lista 3'))
+  it('Checkbox checks through its label', async () => {
+    render(<Checkbox label="Problem set 3" />)
+    const cb = screen.getByRole('checkbox', { name: 'Problem set 3' })
+    await userEvent.click(screen.getByText('Problem set 3'))
     expect(cb).toBeChecked()
   })
 })
 
 describe('Input', () => {
-  it('liga rótulo e mensagem de erro', () => {
-    render(<Input rotulo="Data" erro="Data inválida" />)
-    const campo = screen.getByLabelText('Data')
-    expect(campo).toHaveAttribute('aria-invalid', 'true')
-    expect(campo).toHaveAccessibleDescription('Data inválida')
+  it('links the label and the error message', () => {
+    render(<Input label="Date" error="Invalid date" />)
+    const field = screen.getByLabelText('Date')
+    expect(field).toHaveAttribute('aria-invalid', 'true')
+    expect(field).toHaveAccessibleDescription('Invalid date')
   })
 })
 
 describe('Dropdown', () => {
-  it('abre, seleciona item e fecha; Esc também fecha', async () => {
+  it('opens, selects an item and closes; Esc also closes', async () => {
     const onSelect = vi.fn()
-    render(<Dropdown rotulo="Ações" itens={[{ id: 'x', label: 'Rodar', onSelect }]} />)
-    await userEvent.click(screen.getByRole('button', { name: 'Ações' }))
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Rodar' }))
+    render(<Dropdown label="Actions" items={[{ id: 'x', label: 'Run', onSelect }]} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Actions' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Run' }))
     expect(onSelect).toHaveBeenCalledOnce()
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Ações' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Actions' }))
     expect(screen.getByRole('menu')).toBeInTheDocument()
     await userEvent.keyboard('{Escape}')
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
@@ -126,22 +126,22 @@ describe('Dropdown', () => {
 })
 
 describe('Modal', () => {
-  it('foca o primeiro campo e fecha com Esc', async () => {
+  it('focuses the first field and closes with Esc', async () => {
     const onClose = vi.fn()
     render(
-      <Modal aberto onClose={onClose} titulo="Nova rotina">
-        <Input rotulo="Nome" />
+      <Modal open onClose={onClose} title="New routine">
+        <Input label="Name" />
       </Modal>,
     )
-    expect(screen.getByRole('dialog', { name: 'Nova rotina' })).toBeInTheDocument()
-    expect(screen.getByLabelText('Nome')).toHaveFocus()
+    expect(screen.getByRole('dialog', { name: 'New routine' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Name')).toHaveFocus()
     await userEvent.keyboard('{Escape}')
     expect(onClose).toHaveBeenCalled()
   })
 
-  it('não renderiza fechado', () => {
+  it("doesn't render when closed", () => {
     render(
-      <Modal aberto={false} onClose={() => {}} titulo="X">
+      <Modal open={false} onClose={() => {}} title="X">
         y
       </Modal>,
     )
@@ -150,37 +150,37 @@ describe('Modal', () => {
 })
 
 describe('ProgressBar', () => {
-  it('limita o valor e expõe aria', () => {
-    render(<ProgressBar rotulo="Revisões" valor={150} />)
-    expect(screen.getByRole('progressbar', { name: 'Revisões' })).toHaveAttribute('aria-valuenow', '150')
+  it('clamps the value and exposes aria', () => {
+    render(<ProgressBar label="Reviews" value={150} />)
+    expect(screen.getByRole('progressbar', { name: 'Reviews' })).toHaveAttribute('aria-valuenow', '150')
     expect(screen.getByText('100%')).toBeInTheDocument()
   })
 })
 
 describe('Orb', () => {
-  it('muda o rótulo conforme o estado', () => {
+  it('changes the label with the state', () => {
     const { rerender } = render(<Orb />)
-    expect(screen.getByRole('button', { name: 'Falar com o Gandalf' })).toHaveAttribute('aria-pressed', 'false')
-    rerender(<Orb estado="ouvindo" />)
-    expect(screen.getByRole('button', { name: /Ouvindo/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Talk to Gandalf' })).toHaveAttribute('aria-pressed', 'false')
+    rerender(<Orb state="listening" />)
+    expect(screen.getByRole('button', { name: /Listening/ })).toHaveAttribute('aria-pressed', 'true')
   })
 })
 
 describe('Toast', () => {
-  function Disparar() {
+  function Trigger() {
     const toast = useToast()
-    return <button onClick={() => toast('erro', 'Falhou')}>disparar</button>
+    return <button onClick={() => toast('error', 'It failed')}>trigger</button>
   }
 
-  it('mostra e some depois do tempo', async () => {
+  it('shows up and disappears after the time', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     render(
-      <ToastProvider duracaoMs={1000}>
-        <Disparar />
+      <ToastProvider durationMs={1000}>
+        <Trigger />
       </ToastProvider>,
     )
-    await userEvent.click(screen.getByText('disparar'))
-    expect(screen.getByRole('alert')).toHaveTextContent('Falhou')
+    await userEvent.click(screen.getByText('trigger'))
+    expect(screen.getByRole('alert')).toHaveTextContent('It failed')
     act(() => vi.advanceTimersByTime(1100))
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     vi.useRealTimers()

@@ -2,12 +2,12 @@ import { FitAddon } from '@xterm/addon-fit'
 import { Terminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
 import { useEffect, useRef } from 'react'
-import type { EventoSessao } from '../lib/api'
+import type { SessionEvent } from '../lib/api'
 import { cn } from '../lib/cn'
-import { formatarEvento } from '../lib/terminalFormat'
+import { formatEvent } from '../lib/terminalFormat'
 
-// Cores ANSI na paleta Cinzento (tela sempre escura, nos dois temas).
-const TEMA = {
+// ANSI colors in the Grey palette (the screen is always dark, in both themes).
+const THEME = {
   background: '#16181d',
   foreground: '#eeece8',
   cursor: '#e0a42a',
@@ -23,18 +23,18 @@ const TEMA = {
   brightBlack: '#7d828c',
 }
 
-type Props = { eventos: EventoSessao[]; className?: string; rotulo: string }
+type Props = { events: SessionEvent[]; className?: string; label: string }
 
-/** Terminal só de leitura que renderiza os eventos de uma sessão do Claude Code. */
-export function XTerm({ eventos, className, rotulo }: Props) {
+/** A read-only terminal that renders the events of a Claude Code session. */
+export function XTerm({ events, className, label }: Props) {
   const host = useRef<HTMLDivElement>(null)
   const term = useRef<Terminal | null>(null)
-  const escritos = useRef(0)
+  const written = useRef(0)
 
   useEffect(() => {
     if (!host.current) return
     const t = new Terminal({
-      theme: TEMA,
+      theme: THEME,
       fontFamily: '"JetBrains Mono", monospace',
       fontSize: 13,
       lineHeight: 1.35,
@@ -48,16 +48,16 @@ export function XTerm({ eventos, className, rotulo }: Props) {
     t.loadAddon(fit)
     t.open(host.current)
     term.current = t
-    escritos.current = 0
-    const ajustar = () => {
+    written.current = 0
+    const resize = () => {
       try {
         fit.fit()
       } catch {
-        // container ainda sem tamanho
+        // the container has no size yet
       }
     }
-    ajustar()
-    const obs = new ResizeObserver(ajustar)
+    resize()
+    const obs = new ResizeObserver(resize)
     obs.observe(host.current)
     return () => {
       obs.disconnect()
@@ -69,16 +69,16 @@ export function XTerm({ eventos, className, rotulo }: Props) {
   useEffect(() => {
     const t = term.current
     if (!t) return
-    // Lista diminuiu (trocou de sessão): recomeça do zero.
-    if (eventos.length < escritos.current) {
+    // The list shrank (switched sessions): start over.
+    if (events.length < written.current) {
       t.reset()
-      escritos.current = 0
+      written.current = 0
     }
-    for (const ev of eventos.slice(escritos.current)) {
-      for (const linha of formatarEvento(ev)) t.writeln(linha)
+    for (const ev of events.slice(written.current)) {
+      for (const line of formatEvent(ev)) t.writeln(line)
     }
-    escritos.current = eventos.length
-  }, [eventos])
+    written.current = events.length
+  }, [events])
 
-  return <div ref={host} role="log" aria-label={rotulo} className={cn('h-80 w-full', className)} />
+  return <div ref={host} role="log" aria-label={label} className={cn('h-80 w-full', className)} />
 }

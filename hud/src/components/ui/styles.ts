@@ -1,61 +1,61 @@
-// Classes compartilhadas pelo design system neumórfico "Bonsai".
+// Classes shared by the neumorphic design system.
 
-export type Cor = 'musgo' | 'musgo-claro' | 'madeira' | 'ocre' | 'terracota' | 'sakura' | 'ardosia'
+export type Color = 'primary' | 'primary-light' | 'wood' | 'gold' | 'ember' | 'violet' | 'silver'
 
-// Mapas estáticos: o Tailwind só gera classes que aparecem literalmente no código.
+// Static maps: Tailwind only generates classes that appear literally in the code.
 
-/** Cor sólida (pontos, preenchimentos, ícones). */
-export const solido: Record<Cor, string> = {
-  musgo: 'bg-musgo',
-  'musgo-claro': 'bg-musgo-claro',
-  madeira: 'bg-madeira',
-  ocre: 'bg-ocre',
-  terracota: 'bg-terracota',
-  sakura: 'bg-sakura',
-  ardosia: 'bg-ardosia',
+/** Solid color (dots, fills, icons). */
+export const solid: Record<Color, string> = {
+  primary: 'bg-primary',
+  'primary-light': 'bg-primary-light',
+  wood: 'bg-wood',
+  gold: 'bg-gold',
+  ember: 'bg-ember',
+  violet: 'bg-violet',
+  silver: 'bg-silver',
 }
 
-/** Cor do ícone/traço. */
-export const texto: Record<Cor, string> = {
-  musgo: 'text-musgo',
-  'musgo-claro': 'text-musgo-claro',
-  madeira: 'text-madeira',
-  ocre: 'text-ocre',
-  terracota: 'text-terracota',
-  sakura: 'text-sakura',
-  ardosia: 'text-ardosia',
+/** Icon/stroke color. */
+export const textColor: Record<Color, string> = {
+  primary: 'text-primary',
+  'primary-light': 'text-primary-light',
+  wood: 'text-wood',
+  gold: 'text-gold',
+  ember: 'text-ember',
+  violet: 'text-violet',
+  silver: 'text-silver',
 }
 
-/** Fundo tingido de leve; o texto continua em `tinta` para manter contraste. */
-export const tingido: Record<Cor, string> = {
-  musgo: 'bg-musgo/20',
-  'musgo-claro': 'bg-musgo-claro/30',
-  madeira: 'bg-madeira/20',
-  ocre: 'bg-ocre/25',
-  terracota: 'bg-terracota/20',
-  sakura: 'bg-sakura/30',
-  ardosia: 'bg-ardosia/20',
+/** Lightly tinted background; the text stays `ink` to keep contrast. */
+export const tinted: Record<Color, string> = {
+  primary: 'bg-primary/20',
+  'primary-light': 'bg-primary-light/30',
+  wood: 'bg-wood/20',
+  gold: 'bg-gold/25',
+  ember: 'bg-ember/20',
+  violet: 'bg-violet/30',
+  silver: 'bg-silver/20',
 }
 
-export const foco = 'focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-musgo'
+export const focusRing = 'focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-primary'
 
-/** Superfície em relevo (card, painel). */
-export const relevo = 'bg-pergaminho shadow-relevo'
+/** Raised surface (card, panel). */
+export const raised = 'bg-surface shadow-raised'
 
-/** Superfície cavada (campo, trilha, área vazia). */
-export const cavado = 'bg-pergaminho shadow-cavado'
+/** Sunken surface (field, track, empty area). */
+export const sunken = 'bg-surface shadow-sunken'
 
-/** Controle em relevo que cresce no hover e afunda no clique. */
-export const interativo = [
-  'shadow-relevo-sm transition-[box-shadow,color,background-color] duration-150',
-  'hover:shadow-relevo active:shadow-cavado-sm',
+/** Raised control that grows on hover and sinks on click. */
+export const interactive = [
+  'shadow-raised-sm transition-[box-shadow,color,background-color] duration-150',
+  'hover:shadow-raised active:shadow-sunken-sm',
   'disabled:pointer-events-none disabled:opacity-45',
-  foco,
+  focusRing,
 ].join(' ')
 
-// Cada tier tem a mesma cor em todo o HUD (selos e gráficos): tokens serie-1..3.
-export const COR_TIER: Record<1 | 2 | 3, { ponto: string; fundo: string }> = {
-  1: { ponto: 'bg-serie-1', fundo: 'bg-serie-1/20' },
-  2: { ponto: 'bg-serie-2', fundo: 'bg-serie-2/25' },
-  3: { ponto: 'bg-serie-3', fundo: 'bg-serie-3/20' },
+// Each tier has the same color across the HUD (badges and charts): tokens series-1..3.
+export const TIER_COLOR: Record<1 | 2 | 3, { dot: string; bg: string }> = {
+  1: { dot: 'bg-series-1', bg: 'bg-series-1/20' },
+  2: { dot: 'bg-series-2', bg: 'bg-series-2/25' },
+  3: { dot: 'bg-series-3', bg: 'bg-series-3/20' },
 }

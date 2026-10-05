@@ -1,6 +1,6 @@
-"""Copia vault-template/ para VAULT_PATH sem sobrescrever nada existente.
+"""Copies vault-template/ to VAULT_PATH without overwriting anything that exists.
 
-Uso: uv run python -m app.setup_vault
+Usage: uv run python -m app.setup_vault
 """
 
 import shutil
@@ -12,7 +12,7 @@ TEMPLATE = REPO_ROOT / "vault-template"
 
 
 def copy_template(template: Path, target: Path) -> tuple[list[Path], list[Path]]:
-    """Retorna (criados, ignorados). Arquivos já existentes nunca são tocados."""
+    """Returns (created, skipped). Existing files are never touched."""
     created: list[Path] = []
     skipped: list[Path] = []
     for src in sorted(template.rglob("*")):
@@ -33,7 +33,7 @@ def main() -> None:
     target = get_settings().vault_path
     created, skipped = copy_template(TEMPLATE, target)
     print(f"Vault: {target}")
-    print(f"  {len(created)} arquivo(s) criado(s), {len(skipped)} já existente(s) preservado(s).")
+    print(f"  {len(created)} file(s) created, {len(skipped)} existing file(s) kept.")
     for rel in created:
         print(f"  + {rel}")
 

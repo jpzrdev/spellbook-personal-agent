@@ -1,5 +1,6 @@
 .env
-vault/
+# The user's vault (personal data) lives outside git; vault-template/ is the versioned skeleton.
+/vault/
 
 # Python
 __pycache__/
@@ -12,11 +13,12 @@ dist/
 
 .DS_Store
 
-# Dados locais do Bridge (saídas efêmeras etc.): nunca versionar
+# Local Bridge data (ephemeral outputs, push keys, voice models): never commit
+bridge/data/
 bridge/dados/
 
-# Notas particulares do desenvolvimento (ficam só na máquina local)
+# Private development notes (local machine only)
 PLANO.md
 docs/DECISOES.md
 CLAUDE.local.md
-.claude/
+/.claude/

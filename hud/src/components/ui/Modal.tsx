@@ -3,93 +3,93 @@ import { useEffect, useId, useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { cn } from '../../lib/cn'
 import { IconChip } from './IconChip'
-import { foco, relevo, type Cor } from './styles'
+import { focusRing, raised, type Color } from './styles'
 
 type Props = {
-  aberto: boolean
+  open: boolean
   onClose: () => void
-  titulo: ReactNode
-  icone?: ReactNode
-  cor?: Cor
+  title: ReactNode
+  icon?: ReactNode
+  color?: Color
   children: ReactNode
-  rodape?: ReactNode
+  footer?: ReactNode
 }
 
-/** Painel em relevo sobre véu azul-noite translúcido (sem desfoque). Esc/fundo fecham; prende o foco. */
-export function Modal({ aberto, onClose, titulo, icone, cor = 'musgo', children, rodape }: Props) {
-  const painel = useRef<HTMLDivElement>(null)
-  const tituloId = useId()
+/** A raised panel over a translucent midnight-blue veil (no blur). Esc/backdrop close it; traps focus. */
+export function Modal({ open, onClose, title, icon, color = 'primary', children, footer }: Props) {
+  const panel = useRef<HTMLDivElement>(null)
+  const titleId = useId()
 
   useEffect(() => {
-    if (!aberto) return
-    const anterior = document.activeElement as HTMLElement | null
-    const focaveis = () =>
+    if (!open) return
+    const previous = document.activeElement as HTMLElement | null
+    const focusable = () =>
       Array.from(
-        painel.current?.querySelectorAll<HTMLElement>(
+        panel.current?.querySelectorAll<HTMLElement>(
           'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
         ) ?? [],
       ).filter((el) => !el.hasAttribute('disabled'))
 
-    const lista = focaveis()
-    const campo = lista.find((el) => el.matches('input, select, textarea'))
-    ;(campo ?? lista[0])?.focus()
+    const items = focusable()
+    const field = items.find((el) => el.matches('input, select, textarea'))
+    ;(field ?? items[0])?.focus()
 
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose()
       if (e.key !== 'Tab') return
-      const lista = focaveis()
-      if (!lista.length) return
-      const [primeiro, ultimo] = [lista[0], lista[lista.length - 1]]
-      if (e.shiftKey && document.activeElement === primeiro) {
+      const items = focusable()
+      if (!items.length) return
+      const [first, last] = [items[0], items[items.length - 1]]
+      if (e.shiftKey && document.activeElement === first) {
         e.preventDefault()
-        ultimo.focus()
-      } else if (!e.shiftKey && document.activeElement === ultimo) {
+        last.focus()
+      } else if (!e.shiftKey && document.activeElement === last) {
         e.preventDefault()
-        primeiro.focus()
+        first.focus()
       }
     }
     document.addEventListener('keydown', onKeyDown)
     return () => {
       document.removeEventListener('keydown', onKeyDown)
-      anterior?.focus()
+      previous?.focus()
     }
-  }, [aberto, onClose])
+  }, [open, onClose])
 
-  if (!aberto) return null
+  if (!open) return null
 
   return createPortal(
-    <div className="animar-veu fixed inset-0 z-40 grid place-items-center bg-[#10131a]/40 p-4" onMouseDown={onClose}>
+    <div className="anim-veil fixed inset-0 z-40 grid place-items-center bg-[#10131a]/40 p-4" onMouseDown={onClose}>
       <div
-        ref={painel}
+        ref={panel}
         role="dialog"
         aria-modal="true"
-        aria-labelledby={tituloId}
+        aria-labelledby={titleId}
         onMouseDown={(e) => e.stopPropagation()}
-        className={cn(relevo, 'animar-surgir w-full max-w-lg rounded-card p-6 shadow-relevo-lg')}
+        className={cn(raised, 'anim-pop w-full max-w-lg rounded-card p-6 shadow-raised-lg')}
       >
         <header className="mb-5 flex items-center gap-3">
-          {icone && (
-            <IconChip cor={cor} tamanho="sm">
-              {icone}
+          {icon && (
+            <IconChip color={color} size="sm">
+              {icon}
             </IconChip>
           )}
-          <h2 id={tituloId} className="flex-1 text-xl font-semibold">
-            {titulo}
+          <h2 id={titleId} className="flex-1 text-xl font-semibold">
+            {title}
           </h2>
           <button
             type="button"
-            aria-label="Fechar"
+            aria-label="Close"
             onClick={onClose}
             className={cn(
-              'grid size-9 cursor-pointer place-items-center rounded-pilula shadow-relevo-sm active:shadow-cavado-sm',
-              foco,
+              'grid size-9 cursor-pointer place-items-center rounded-pill shadow-raised-sm active:shadow-sunken-sm',
+              focusRing,
             )}
           >
             <X className="size-4" strokeWidth={2.5} />
           </button>
         </header>
         {children}
-        {rodape && <footer className="mt-6 flex justify-end gap-3">{rodape}</footer>}
+        {footer && <footer className="mt-6 flex justify-end gap-3">{footer}</footer>}
       </div>
     </div>,
     document.body,

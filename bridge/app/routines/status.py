@@ -1,4 +1,4 @@
-"""Status das rotinas: execuções de hoje (recibos + sessões em andamento) e histórico."""
+"""Routine status: today's runs (receipts + sessions in progress) and history."""
 
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -6,55 +6,55 @@ from zoneinfo import ZoneInfo
 
 from app import cron
 from app.gandalf import tier3
-from app.recibos_index import ler_recibos
-from app.vault.reader import ler_rotinas
+from app.receipts_index import read_receipts
+from app.vault.reader import read_routines
 
-# Uma execução conta para um horário agendado se começou até 2 min antes dele (relógios, atraso).
-TOLERANCIA = timedelta(minutes=2)
+# A run counts for a scheduled time if it started up to 2 min before it (clocks, delays).
+TOLERANCE = timedelta(minutes=2)
 
 
-def execucoes(vault: Path, desde: datetime, ate: datetime) -> dict[str, list[dict]]:
-    """Por slug: execuções (recibos com `rotina` + sessões ainda ativas), da mais antiga à mais nova."""
-    por_slug: dict[str, list[dict]] = {}
-    for r in ler_recibos(vault, desde.date(), ate.date()):
-        if r["rotina"] and r["quando"] and desde <= r["quando"] <= ate:
-            por_slug.setdefault(r["rotina"], []).append(
-                {"quando": r["quando"], "status": r["status"], "recibo_id": r["id"], "tier": r["tier"]}
+def runs(vault: Path, start: datetime, end: datetime) -> dict[str, list[dict]]:
+    """Per slug: runs (receipts with `routine` + still-active sessions), oldest to newest."""
+    by_slug: dict[str, list[dict]] = {}
+    for r in read_receipts(vault, start.date(), end.date()):
+        if r["routine"] and r["at"] and start <= r["at"] <= end:
+            by_slug.setdefault(r["routine"], []).append(
+                {"at": r["at"], "status": r["status"], "receipt_id": r["id"], "tier": r["tier"]}
             )
-    for s in tier3.gerenciador(vault).listar():
-        if s.rotina and s.status in tier3.ATIVAS:
-            por_slug.setdefault(s.rotina, []).append(
-                {"quando": s.criada, "status": "rodando" if s.status == "rodando" else "fila", "sessao_id": s.id}
+    for s in tier3.manager(vault).sessions():
+        if s.routine and s.status in tier3.ACTIVE:
+            by_slug.setdefault(s.routine, []).append(
+                {"at": s.created, "status": s.status, "session_id": s.id}
             )
-    for lista in por_slug.values():
-        lista.sort(key=lambda e: e["quando"])
-    return por_slug
+    for items in by_slug.values():
+        items.sort(key=lambda e: e["at"])
+    return by_slug
 
 
-def rotinas_do_dia(vault: Path, agora: datetime, tz: ZoneInfo) -> list[dict]:
-    """Disparos de hoje das rotinas ativas com status: pendente | passou | fila | rodando | ok | erro…"""
-    inicio_dia = agora.replace(hour=0, minute=0, second=0, microsecond=0)
-    feitas = execucoes(vault, inicio_dia, agora + timedelta(days=1))
-    itens: list[dict] = []
-    for r in ler_rotinas(vault):
-        if not r.ativa:
+def routines_today(vault: Path, now: datetime, tz: ZoneInfo) -> list[dict]:
+    """Today's fire times of the active routines with a status: pending | missed | queued | running | ok | error…"""
+    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    done = runs(vault, day_start, now + timedelta(days=1))
+    items: list[dict] = []
+    for r in read_routines(vault):
+        if not r.active:
             continue
         try:
-            disparos = cron.horarios_no_dia(r.cron, agora.date(), tz)
+            fires = cron.times_in_day(r.cron, now.date(), tz)
         except ValueError:
             continue
-        execs = feitas.get(r.slug, [])
-        for i, d in enumerate(disparos):
-            proximo = disparos[i + 1] if i + 1 < len(disparos) else inicio_dia + timedelta(days=2)
-            # Execução deste horário: a primeira entre (horário − tolerância) e o próximo horário.
-            exec_ = next((e for e in execs if d - TOLERANCIA <= e["quando"] < proximo - TOLERANCIA), None)
-            status = exec_["status"] if exec_ else ("pendente" if d > agora else "passou")
-            item = {"slug": r.slug, "nome": r.nome, "horario": d.strftime("%H:%M"), "quando": r.quando, "status": status}
-            if exec_:
-                item.update({k: exec_[k] for k in ("recibo_id", "sessao_id") if k in exec_})
-            itens.append(item)
-    return sorted(itens, key=lambda i: i["horario"])
+        executions = done.get(r.slug, [])
+        for i, d in enumerate(fires):
+            following = fires[i + 1] if i + 1 < len(fires) else day_start + timedelta(days=2)
+            # The run for this time: the first one between (time − tolerance) and the next time.
+            run = next((e for e in executions if d - TOLERANCE <= e["at"] < following - TOLERANCE), None)
+            status = run["status"] if run else ("pending" if d > now else "missed")
+            item = {"slug": r.slug, "name": r.name, "time": d.strftime("%H:%M"), "schedule": r.schedule, "status": status}
+            if run:
+                item.update({k: run[k] for k in ("receipt_id", "session_id") if k in run})
+            items.append(item)
+    return sorted(items, key=lambda i: i["time"])
 
 
-def historico(vault: Path, agora: datetime, dias: int = 30) -> dict[str, list[dict]]:
-    return execucoes(vault, agora - timedelta(days=dias), agora + timedelta(minutes=1))
+def history(vault: Path, now: datetime, days: int = 30) -> dict[str, list[dict]]:
+    return runs(vault, now - timedelta(days=days), now + timedelta(minutes=1))

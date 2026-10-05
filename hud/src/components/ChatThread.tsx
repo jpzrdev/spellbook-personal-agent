@@ -1,97 +1,97 @@
 import { ChevronDown, Send, Terminal } from 'lucide-react'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
-import type { PropostaResumo } from '../lib/api'
-import { chat, useChat, type Troca } from '../lib/chatStore'
-import { mascote, reagirAResposta } from '../lib/mascote'
+import type { ProposalSummary } from '../lib/api'
+import { chat, useChat, type Turn } from '../lib/chatStore'
+import { mascot, reactToReply } from '../lib/mascot'
 import { cn } from '../lib/cn'
-import { usePerguntar, useSessoes } from '../lib/queries'
-import { STATUS_SESSAO } from '../lib/sessoes'
-import { PropostaEvento } from './PropostaEvento'
-import { ResultadoPesquisa } from './ResultadoPesquisa'
-import { SessaoTerminal } from './SessaoTerminal'
-import { TextoGandalf } from './TextoGandalf'
+import { useAsk, useSessions } from '../lib/queries'
+import { SESSION_STATUS } from '../lib/sessions'
+import { EventProposal } from './EventProposal'
+import { GandalfText } from './GandalfText'
+import { ResearchResult } from './ResearchResult'
+import { SessionTerminal } from './SessionTerminal'
 import { Badge, Button, TierBadge } from './ui'
-import { foco } from './ui/styles'
+import { focusRing } from './ui/styles'
 
-const SUGESTOES = ['o que tenho hoje?', 'minhas prioridades', 'me lembra de … em 30 min', 'adiciona tarefa …', 'organize meu raw/']
+const SUGGESTIONS = ['what do I have today?', 'my priorities', 'remind me to … in 30 min', 'add task …', 'organize my raw/']
 
-function useEnviar(nota?: string) {
-  const perguntar = usePerguntar()
-  function enviar(pergunta: string, confirmar = false) {
-    const id = chat.adicionar(pergunta)
-    mascote.alimentar(15)
-    perguntar.mutate(
-      { texto: pergunta, confirmar, nota },
+function useSend(note?: string) {
+  const ask = useAsk()
+  function send(question: string, confirm = false) {
+    const id = chat.add(question)
+    mascot.feed(15)
+    ask.mutate(
+      { text: question, confirm, note },
       {
-        onSuccess: (resposta) => {
-          chat.atualizar(id, { resposta })
-          reagirAResposta(resposta)
+        onSuccess: (reply) => {
+          chat.update(id, { reply })
+          reactToReply(reply)
         },
         onError: (err) => {
-          chat.atualizar(id, { erro: err.message })
-          mascote.reagir('confuso', 3000)
+          chat.update(id, { error: err.message })
+          mascot.react('confused', 3000)
         },
       },
     )
   }
-  return { enviar, pendente: perguntar.isPending }
+  return { send, pending: ask.isPending }
 }
 
-function Resposta({ t, ultima, enviar }: { t: Troca; ultima: boolean; enviar: (p: string, c?: boolean) => void }) {
-  const r = t.resposta!
-  const [aberto, setAberto] = useState(ultima)
-  const { data: sessoes } = useSessoes()
-  const sessao = r.sessao_id ? sessoes?.find((s) => s.id === r.sessao_id) : undefined
-  const propostas = (r.dados?.propostas as PropostaResumo[] | undefined) ?? []
+function Reply({ t, last, send }: { t: Turn; last: boolean; send: (q: string, c?: boolean) => void }) {
+  const r = t.reply!
+  const [open, setOpen] = useState(last)
+  const { data: sessions } = useSessions()
+  const session = r.session_id ? sessions?.find((s) => s.id === r.session_id) : undefined
+  const proposals = (r.data?.proposals as ProposalSummary[] | undefined) ?? []
 
-  if (r.precisa_confirmar)
+  if (r.needs_confirmation)
     return (
-      <div className="flex flex-col items-start gap-3 rounded-controle p-3 shadow-relevo-sm">
-        <Badge cor="ocre">limite diário</Badge>
-        <TextoGandalf texto={r.resposta} />
-        <Button tamanho="sm" onClick={() => enviar(t.pergunta, true)}>
-          Usar mesmo assim
+      <div className="flex flex-col items-start gap-3 rounded-control p-3 shadow-raised-sm">
+        <Badge color="gold">daily limit</Badge>
+        <GandalfText text={r.reply} />
+        <Button size="sm" onClick={() => send(t.question, true)}>
+          Use it anyway
         </Button>
       </div>
     )
 
   return (
-    <div className="flex flex-col gap-2 rounded-controle p-3 shadow-relevo-sm">
+    <div className="flex flex-col gap-2 rounded-control p-3 shadow-raised-sm">
       <div className="flex flex-wrap items-center gap-2">
         {r.tier > 0 && <TierBadge tier={r.tier as 1 | 2 | 3} />}
-        {r.tier !== 3 && <span className="text-xs text-tinta-suave tabular-nums">{(r.duracao_ms / 1000).toFixed(r.duracao_ms < 1000 ? 2 : 1)} s</span>}
-        {sessao && <Badge cor={STATUS_SESSAO[sessao.status].cor}>{STATUS_SESSAO[sessao.status].texto}</Badge>}
-        {r.tier === 1 && !r.entendeu && <Badge cor="ocre">não reconhecido</Badge>}
+        {r.tier !== 3 && <span className="text-xs text-ink-muted tabular-nums">{(r.duration_ms / 1000).toFixed(r.duration_ms < 1000 ? 2 : 1)} s</span>}
+        {session && <Badge color={SESSION_STATUS[session.status].color}>{SESSION_STATUS[session.status].text}</Badge>}
+        {r.tier === 1 && !r.understood && <Badge color="gold">not recognized</Badge>}
       </div>
-      <TextoGandalf texto={r.resposta} />
-      {propostas.map((p) => (
-        <PropostaEvento
+      <GandalfText text={r.reply} />
+      {proposals.map((p) => (
+        <EventProposal
           key={p.id}
-          proposta={p}
-          onMudou={(nova) =>
-            chat.atualizar(t.id, { resposta: { ...r, dados: { ...r.dados, propostas: propostas.map((x) => (x.id === nova.id ? nova : x)) } } })
+          proposal={p}
+          onChange={(next) =>
+            chat.update(t.id, { reply: { ...r, data: { ...r.data, proposals: proposals.map((x) => (x.id === next.id ? next : x)) } } })
           }
         />
       ))}
-      {r.sessao_id && r.intent === 'pesquisar' && <ResultadoPesquisa sessaoId={r.sessao_id} />}
-      {r.sessao_id && (
+      {r.session_id && r.intent === 'research' && <ResearchResult sessionId={r.session_id} />}
+      {r.session_id && (
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
             <button
               type="button"
-              aria-expanded={aberto}
-              onClick={() => setAberto((a) => !a)}
-              className={cn('flex cursor-pointer items-center gap-1.5 rounded-pilula px-3 py-1 text-xs font-semibold shadow-relevo-sm active:shadow-cavado-sm', foco)}
+              aria-expanded={open}
+              onClick={() => setOpen((a) => !a)}
+              className={cn('flex cursor-pointer items-center gap-1.5 rounded-pill px-3 py-1 text-xs font-semibold shadow-raised-sm active:shadow-sunken-sm', focusRing)}
             >
-              <Terminal className="size-3.5" aria-hidden /> {aberto ? 'Esconder terminal' : 'Ver terminal'}
-              <ChevronDown className={cn('size-3.5 transition-transform', aberto && 'rotate-180')} aria-hidden />
+              <Terminal className="size-3.5" aria-hidden /> {open ? 'Hide terminal' : 'Show terminal'}
+              <ChevronDown className={cn('size-3.5 transition-transform', open && 'rotate-180')} aria-hidden />
             </button>
-            <Link to={`/terminais?sessao=${r.sessao_id}`} className={cn('rounded-pilula px-2 py-1 text-xs font-semibold text-musgo-texto', foco)}>
-              abrir em Terminais
+            <Link to={`/terminals?session=${r.session_id}`} className={cn('rounded-pill px-2 py-1 text-xs font-semibold text-primary-text', focusRing)}>
+              open in Terminals
             </Link>
           </div>
-          {aberto && <SessaoTerminal sessaoId={r.sessao_id} inicial={sessao} altura="h-56" />}
+          {open && <SessionTerminal sessionId={r.session_id} initial={session} height="h-56" />}
         </div>
       )}
     </div>
@@ -100,56 +100,56 @@ function Resposta({ t, ultima, enviar }: { t: Troca; ultima: boolean; enviar: (p
 
 type Props = {
   className?: string
-  altura?: string
-  /** Conversa sobre uma nota de estudo: as perguntas vão com ela como contexto. */
-  nota?: string
+  height?: string
+  /** A conversation about a study note: the questions go with it as context. */
+  note?: string
   placeholder?: string
-  /** Mostra só as trocas feitas aqui (não o histórico inteiro do chat). */
-  soNovas?: boolean
+  /** Shows only the turns made here (not the whole chat history). */
+  newOnly?: boolean
 }
 
-/** Conversa com o Gandalf: badge de tier em cada resposta e mini-terminal nas respostas do Tier 3. */
-export function ChatThread({ className, altura = 'max-h-[60vh]', nota, placeholder = 'Pergunte ou peça algo…', soNovas = false }: Props) {
-  const todas = useChat()
-  const [desde] = useState(() => (soNovas ? todas.length : 0))
-  const trocas = soNovas ? todas.slice(desde) : todas
-  const { enviar, pendente } = useEnviar(nota)
-  const [texto, setTexto] = useState('')
-  const fim = useRef<HTMLDivElement>(null)
-  const campo = useRef<HTMLInputElement>(null)
+/** The conversation with Gandalf: a tier badge on each reply and a mini terminal on Tier 3 replies. */
+export function ChatThread({ className, height = 'max-h-[60vh]', note, placeholder = 'Ask or request something…', newOnly = false }: Props) {
+  const all = useChat()
+  const [since] = useState(() => (newOnly ? all.length : 0))
+  const turns = newOnly ? all.slice(since) : all
+  const { send, pending } = useSend(note)
+  const [text, setText] = useState('')
+  const end = useRef<HTMLDivElement>(null)
+  const field = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    // Corpo em bloco: scrollIntoView pode devolver uma Promise, que não pode virar o "cleanup".
-    fim.current?.scrollIntoView?.({ block: 'end' })
-  }, [trocas.length])
+    // Block body: scrollIntoView may return a Promise, which can't become the "cleanup".
+    end.current?.scrollIntoView?.({ block: 'end' })
+  }, [turns.length])
 
-  function submeter(e: FormEvent) {
+  function submit(e: FormEvent) {
     e.preventDefault()
-    const p = texto.trim()
-    if (!p || pendente) return
-    setTexto('')
-    enviar(p)
+    const q = text.trim()
+    if (!q || pending) return
+    setText('')
+    send(q)
   }
 
   return (
     <div className={cn('flex flex-col gap-4', className)}>
-      <div className={cn('flex flex-col gap-5 overflow-y-auto p-1', altura)}>
-        {trocas.length === 0 && !soNovas && (
+      <div className={cn('flex flex-col gap-5 overflow-y-auto p-1', height)}>
+        {turns.length === 0 && !newOnly && (
           <div className="flex flex-col gap-3">
-            <p className="text-sm text-tinta-suave">
-              Pergunte qualquer coisa. Regras simples respondem na hora (T1); o resto vai para o Claude Code (T2 rápido ou
-              T3 com acesso ao vault).
+            <p className="text-sm text-ink-muted">
+              Ask anything. Simple rules answer right away (T1); the rest goes to Claude Code (T2 fast or
+              T3 with access to the vault).
             </p>
             <div className="flex flex-wrap gap-2">
-              {SUGESTOES.map((s) => (
+              {SUGGESTIONS.map((s) => (
                 <button
                   key={s}
                   type="button"
                   onClick={() => {
-                    setTexto(s.replace(' …', ' '))
-                    campo.current?.focus()
+                    setText(s.replace(' …', ' '))
+                    field.current?.focus()
                   }}
-                  className={cn('cursor-pointer rounded-pilula px-3 py-1 text-sm text-tinta-suave shadow-relevo-sm hover:text-tinta active:shadow-cavado-sm', foco)}
+                  className={cn('cursor-pointer rounded-pill px-3 py-1 text-sm text-ink-muted shadow-raised-sm hover:text-ink active:shadow-sunken-sm', focusRing)}
                 >
                   {s}
                 </button>
@@ -157,30 +157,30 @@ export function ChatThread({ className, altura = 'max-h-[60vh]', nota, placehold
             </div>
           </div>
         )}
-        {trocas.map((t, i) => (
-          <div key={t.id} className="animar-mensagem flex flex-col gap-2">
-            <p className="max-w-[85%] self-end rounded-controle px-3 py-2 text-sm font-semibold shadow-cavado-sm">{t.pergunta}</p>
-            {t.resposta && <Resposta t={t} ultima={i === trocas.length - 1} enviar={enviar} />}
-            {t.erro && (
-              <p role="alert" className="text-sm font-semibold text-erro">
-                {t.erro}
+        {turns.map((t, i) => (
+          <div key={t.id} className="anim-message flex flex-col gap-2">
+            <p className="max-w-[85%] self-end rounded-control px-3 py-2 text-sm font-semibold shadow-sunken-sm">{t.question}</p>
+            {t.reply && <Reply t={t} last={i === turns.length - 1} send={send} />}
+            {t.error && (
+              <p role="alert" className="text-sm font-semibold text-danger">
+                {t.error}
               </p>
             )}
-            {!t.resposta && !t.erro && <p className="text-sm text-tinta-suave">pensando… (o Tier 2 leva alguns segundos)</p>}
+            {!t.reply && !t.error && <p className="text-sm text-ink-muted">thinking… (Tier 2 takes a few seconds)</p>}
           </div>
         ))}
-        <div ref={fim} />
+        <div ref={end} />
       </div>
-      <form onSubmit={submeter} className="flex items-center gap-3">
+      <form onSubmit={submit} className="flex items-center gap-3">
         <input
-          ref={campo}
-          aria-label="Pergunta para o Gandalf"
-          value={texto}
-          onChange={(e) => setTexto(e.target.value)}
+          ref={field}
+          aria-label="Question for Gandalf"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
           placeholder={placeholder}
-          className="h-11 min-w-0 flex-1 rounded-pilula bg-pergaminho px-4 shadow-cavado placeholder:text-tinta-suave/70 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-musgo"
+          className="h-11 min-w-0 flex-1 rounded-pill bg-surface px-4 shadow-sunken placeholder:text-ink-muted/70 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-primary"
         />
-        <Button type="submit" variante="icone" aria-label="Enviar" disabled={!texto.trim() || pendente}>
+        <Button type="submit" variant="icon" aria-label="Send" disabled={!text.trim() || pending}>
           <Send className="size-4" />
         </Button>
       </form>

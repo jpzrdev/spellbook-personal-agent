@@ -1,4 +1,4 @@
-"""Relógio do Bridge, sempre no fuso configurado (America/Sao_Paulo)."""
+"""Bridge clock, always in the configured time zone (TZ_NAME)."""
 
 from datetime import datetime
 from zoneinfo import ZoneInfo
