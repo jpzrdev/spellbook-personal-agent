@@ -93,10 +93,7 @@ def test_efemero_expira(monkeypatch, tmp_path):
 def test_estudos(client):
     [calc] = client.get("/estudos").json()
     assert calc["materia"] == "calculo" and calc["titulo"] == "Cálculo II"
-    assert calc["notas"] == 2
-    assert calc["pendentes"] == [{"nota": "wiki/estudos/calculo/limites.md", "titulo": "Limites", "desde": "2026-10-01"}]
-    assert calc["proxima_revisao"] == "2026-10-10"
-    assert calc["revisoes_feitas"] == 1 and calc["ultima_revisao"] == "output/revisoes/2026-09-30-calculo.md"
+    assert calc["topicos_total"] == 2 and calc["anotacoes_total"] == 0 and calc["fontes_total"] == 0
 
 
 def test_skill_efemera_rodada_pela_aba_skills_nao_vai_para_o_vault(client, vault):

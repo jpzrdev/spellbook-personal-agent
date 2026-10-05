@@ -1,17 +1,13 @@
-"""Estudos: matérias de wiki/estudos/<materia>/, tópicos, progresso, flashcards e repetição espaçada.
+"""Estudos: o acervo pessoal de cada matéria em wiki/estudos/<materia>/.
 
-Cada nota de tópico guarda no frontmatter o próprio estado de estudo (mantido pelo HUD e pelas skills):
-- `estado`: novo | estudado | dominado
-- `revisar`: AAAA-MM-DD da próxima revisão; `intervalo`: dias até ela; `revisoes`: quantas já feitas
-- `ordem`: posição no cronograma (opcional)
-As perguntas dos flashcards vêm do próprio texto da nota: item numerado seguido de um callout recolhido
-(`> [!note]- Resposta`), o formato que as skills `preparar-estudos` e `revisar-estudos` escrevem.
+Uma matéria tem tópicos (notas longas escritas pela IA, `ordem` opcional no frontmatter), anotações do
+usuário (`_anotacoes/`) e material enviado (`_fontes/`). Não há progresso nem revisões agendadas: o
+usuário estuda quando quiser, tira dúvidas no chat e se testa com quizzes efêmeros (`app.estudos_quiz`).
 """
 
 import re
-import unicodedata
+import shutil
 from dataclasses import asdict, dataclass
-from datetime import date, timedelta
 from pathlib import Path
 
 import frontmatter
@@ -19,27 +15,10 @@ import frontmatter
 from app.vault import reader, writer
 
 ESTUDOS = Path("wiki/estudos")
-REVISOES = Path("output/revisoes")
-NIVEIS = ("errei", "dificil", "facil")
-DOMINADO_DIAS = 21  # intervalo a partir do qual o tópico conta como dominado
 
 
 class CaminhoInvalido(ValueError):
     pass
-
-
-def _data(valor) -> date | None:
-    if isinstance(valor, date):
-        return valor
-    try:
-        return date.fromisoformat(str(valor)[:10]) if valor else None
-    except ValueError:
-        return None
-
-
-def _norm(texto: str) -> str:
-    sem = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode().lower()
-    return re.sub(r"[^a-z0-9]+", " ", sem).strip()
 
 
 def _titulo_md(conteudo: str, padrao: str) -> str:
@@ -66,68 +45,40 @@ def nota_da_materia(vault: Path, materia: str, nota: str) -> Path:
     return arquivo
 
 
-# ---------- tópicos e perguntas ----------
+# ---------- tópicos ----------
 
-PERGUNTA_RE = re.compile(r"^\s*(?:\d+[.)]|[-*])\s+(?P<texto>.*\S)\s*$")
-CALLOUT_RE = re.compile(r"^\s*>\s*\[!\w+\][-+]?")
-
-
-def perguntas(conteudo: str) -> list[dict]:
-    """Pares pergunta/resposta: item de lista seguido de callout (`> [!note]- Resposta`)."""
-    linhas = conteudo.splitlines()
-    pares = []
-    i = 0
-    while i < len(linhas):
-        m = PERGUNTA_RE.match(linhas[i])
-        j = i + 1
-        while j < len(linhas) and not linhas[j].strip():
-            j += 1
-        if m and j < len(linhas) and CALLOUT_RE.match(linhas[j]):
-            resposta = []
-            k = j + 1
-            while k < len(linhas) and linhas[k].lstrip().startswith(">"):
-                resposta.append(re.sub(r"^\s*>\s?", "", linhas[k]))
-                k += 1
-            pergunta = re.sub(r"\*\*(.+?)\*\*", r"\1", m.group("texto"))
-            if resposta and pergunta:
-                pares.append({"pergunta": pergunta, "resposta": "\n".join(resposta).strip()})
-            i = k
+def _resumo_curto(conteudo: str, limite: int = 220) -> str:
+    """Primeiro parágrafo de texto corrido da nota (sem títulos, listas, tabelas nem callouts)."""
+    for bloco in re.split(r"\n\s*\n", conteudo):
+        bloco = bloco.strip()
+        if not bloco or bloco[0] in "#>|-*`" or re.match(r"\d+[.)]\s", bloco):
             continue
-        i += 1
-    return pares
+        texto = re.sub(r"\s+", " ", re.sub(r"[*_`]|\[\[([^\]|]+\|)?|\]\]", "", bloco))
+        return texto if len(texto) <= limite else texto[: limite - 1].rsplit(" ", 1)[0] + "…"
+    return ""
 
 
 @dataclass
 class Topico:
     nota: str
     titulo: str
-    estado: str
-    revisar: str | None
-    intervalo: int
-    revisoes: int
-    perguntas: int
     ordem: int | None
+    resumo: str
+    palavras: int
 
 
 def _topico(vault: Path, arquivo: Path) -> Topico:
     post = frontmatter.load(arquivo)
-    meta = post.metadata
-    estado = meta.get("estado") if meta.get("estado") in ("novo", "estudado", "dominado") else (
-        "estudado" if meta.get("revisar") else "novo")
-    revisar = _data(meta.get("revisar"))
     try:
-        ordem = int(meta["ordem"]) if meta.get("ordem") is not None else None
+        ordem = int(post.metadata["ordem"]) if post.metadata.get("ordem") is not None else None
     except (TypeError, ValueError):
         ordem = None
     return Topico(
         nota=arquivo.relative_to(vault).as_posix(),
         titulo=_titulo_md(post.content, arquivo.stem),
-        estado=estado,
-        revisar=revisar.isoformat() if revisar else None,
-        intervalo=int(meta.get("intervalo") or 0),
-        revisoes=int(meta.get("revisoes") or 0),
-        perguntas=len(perguntas(post.content)),
         ordem=ordem,
+        resumo=_resumo_curto(re.sub(r"^#\s+.+$", "", post.content, count=1, flags=re.M)),
+        palavras=len(re.findall(r"\w+", post.content)),
     )
 
 
@@ -145,10 +96,6 @@ def topicos(vault: Path, materia: str) -> list[Topico]:
     return sorted(itens, key=lambda t: (t.ordem is None, t.ordem or 0, t.titulo))
 
 
-def _tarefas_da_materia(vault: Path, materia: str):
-    return [t for t in reader.ler_tarefas(vault) if any(tag == f"estudos/{materia}" or tag.startswith(f"estudos/{materia}/") for tag in t.tags)]
-
-
 def _indice(pasta: Path) -> tuple[dict, str]:
     arquivo = pasta / "_index.md"
     if not arquivo.is_file():
@@ -160,136 +107,67 @@ def _indice(pasta: Path) -> tuple[dict, str]:
         return {}, reader.ler_texto(arquivo)
 
 
-def _resumo(vault: Path, pasta: Path, hoje: date) -> dict:
-    from app.gandalf.tier1 import tarefa_dict
-
+def _resumo(vault: Path, pasta: Path) -> dict:
     materia = pasta.name
-    meta, conteudo = _indice(pasta)
+    _, conteudo = _indice(pasta)
     tops = topicos(vault, materia)
-    pendentes = [t for t in tops if t.revisar and t.revisar <= hoje.isoformat()]
-    futuras = sorted(t.revisar for t in tops if t.revisar and t.revisar > hoje.isoformat())
-    abertas = sorted((t for t in _tarefas_da_materia(vault, materia) if not t.concluida),
-                     key=lambda t: (t.vence is None, t.vence or date.max))
-    revisoes = sorted((vault / REVISOES).glob(f"*{materia}*.md")) if (vault / REVISOES).is_dir() else []
-    prazo = _data(meta.get("prazo"))
     return {
         "materia": materia,
         "titulo": _titulo_md(conteudo, materia),
-        "prazo": prazo.isoformat() if prazo else None,
-        "notas": len(tops),
-        "progresso": {
-            "total": len(tops),
-            "estudados": sum(1 for t in tops if t.estado in ("estudado", "dominado")),
-            "dominados": sum(1 for t in tops if t.estado == "dominado"),
-        },
-        "pendentes": [{"nota": t.nota, "titulo": t.titulo, "desde": t.revisar} for t in sorted(pendentes, key=lambda t: t.revisar)],
-        "proxima_revisao": futuras[0] if futuras else None,
-        "proxima_tarefa": tarefa_dict(abertas[0]) if abertas else None,
-        "revisoes_feitas": sum(t.revisoes for t in tops) + len(revisoes),
-        "ultima_revisao": revisoes[-1].relative_to(vault).as_posix() if revisoes else None,
+        "topicos_total": len(tops),
+        "anotacoes_total": len(listar_anotacoes(vault, materia)),
+        "fontes_total": len(listar_fontes(vault, materia)),
+        "titulos": [t.titulo for t in tops[:6]],
     }
 
 
-def listar_materias(vault: Path, hoje: date) -> list[dict]:
+def remover_materia(vault: Path, materia: str) -> dict:
+    """Apaga a matéria inteira (tópicos, anotações do usuário e material enviado) e tira a linha dela
+    de `wiki/estudos/_index.md`. Pedido explícito do usuário pelo HUD: é a única exclusão em lote do wiki."""
+    pasta = pasta_materia(vault, materia)
+    arquivos = [a for a in pasta.rglob("*") if a.is_file()]
+    removido = {
+        "materia": materia,
+        "titulo": _titulo_md(_indice(pasta)[1], materia),
+        "topicos": len(topicos(vault, materia)),
+        "anotacoes": sum(1 for a in arquivos if ANOTACOES in a.relative_to(pasta).parts),
+        "fontes": sum(1 for a in arquivos if FONTES in a.relative_to(pasta).parts),
+        "arquivos": len(arquivos),
+    }
+    shutil.rmtree(pasta)
+    indice = vault / ESTUDOS / "_index.md"
+    if indice.is_file():
+        texto = reader.ler_texto(indice)
+        link = re.compile(rf"\[\[wiki/estudos/{re.escape(materia)}(/|\||\]\])")
+        linhas = [linha for linha in texto.splitlines() if not link.search(linha)]
+        if not any(re.search(r"\[\[wiki/estudos/[\w-]+", linha) for linha in linhas) and "_Nenhuma matéria ainda._" not in texto:
+            linhas.append("_Nenhuma matéria ainda._")
+        novo = "\n".join(linhas).rstrip() + "\n"
+        if novo != texto:
+            writer.escrever_atomico(indice, novo)
+    return removido
+
+
+def listar_materias(vault: Path) -> list[dict]:
     raiz = vault / ESTUDOS
     if not raiz.is_dir():
         return []
-    return [_resumo(vault, p, hoje) for p in sorted(raiz.iterdir()) if p.is_dir() and not p.name.startswith(".")]
+    return [_resumo(vault, p) for p in sorted(raiz.iterdir()) if p.is_dir() and not p.name.startswith(".")]
 
 
-def detalhe(vault: Path, materia: str, hoje: date) -> dict:
-    from app.gandalf.tier1 import tarefa_dict
-
+def detalhe(vault: Path, materia: str) -> dict:
     pasta = pasta_materia(vault, materia)
     _, conteudo = _indice(pasta)
-    tarefas = sorted(_tarefas_da_materia(vault, materia), key=lambda t: (t.concluida, t.vence is None, t.vence or date.max))
     anotacoes = listar_anotacoes(vault, materia)
     return {
-        **_resumo(vault, pasta, hoje),
-        "hoje": hoje.isoformat(),
+        **_resumo(vault, pasta),
         "indice": conteudo.strip(),
         "topicos": [
             {**asdict(t), "anotacoes": sum(1 for a in anotacoes if a["topico"] == t.nota)} for t in topicos(vault, materia)
         ],
         "anotacoes": [a for a in anotacoes if not a["topico"]],
         "fontes": listar_fontes(vault, materia),
-        "tarefas": [tarefa_dict(t) for t in tarefas if not t.concluida or t.concluida_em == hoje],
     }
-
-
-# ---------- estudo e revisão ----------
-
-def _gravar_meta(arquivo: Path, mudar) -> None:
-    post = frontmatter.load(arquivo)
-    mudar(post.metadata)
-    writer.escrever_atomico(arquivo, frontmatter.dumps(post, sort_keys=False) + "\n")
-
-
-def marcar_estudado(vault: Path, materia: str, nota: str, hoje: date) -> dict:
-    """Tópico lido: vira "estudado", primeira revisão amanhã e a tarefa de estudo dele é concluída."""
-    arquivo = nota_da_materia(vault, materia, nota)
-
-    def mudar(meta):
-        if meta.get("estado") not in ("estudado", "dominado"):
-            meta["estado"] = "estudado"
-            meta["estudado_em"] = hoje
-            meta["intervalo"] = 1
-            meta["revisar"] = hoje + timedelta(days=1)
-
-    _gravar_meta(arquivo, mudar)
-    topico = _topico(vault, arquivo)
-    concluidas = []
-    alvo = _norm(topico.titulo)
-    for t in _tarefas_da_materia(vault, materia):
-        if not t.concluida and alvo and alvo in _norm(t.texto):
-            concluidas.append(writer.atualizar_tarefa(vault, t.id, hoje, concluida=True).texto)
-    return {"topico": asdict(topico), "tarefas_concluidas": concluidas}
-
-
-def proximo_intervalo(atual: int, nivel: str) -> int:
-    """Repetição espaçada simples por tópico: errou volta amanhã; difícil cresce pouco; fácil cresce muito."""
-    if nivel == "errei":
-        return 1
-    if nivel == "dificil":
-        return max(2, round(atual * 1.3)) if atual else 2
-    return max(4, round(atual * 2.5)) if atual else 4
-
-
-def registrar_revisao(vault: Path, materia: str, nota: str, nivel: str, hoje: date) -> dict:
-    if nivel not in NIVEIS:
-        raise ValueError(f"nível inválido: {nivel}")
-    arquivo = nota_da_materia(vault, materia, nota)
-
-    def mudar(meta):
-        novo = proximo_intervalo(int(meta.get("intervalo") or 0), nivel)
-        meta["intervalo"] = novo
-        meta["revisar"] = hoje + timedelta(days=novo)
-        meta["revisoes"] = int(meta.get("revisoes") or 0) + 1
-        meta["ultima_revisao"] = hoje
-        meta["estado"] = "dominado" if novo >= DOMINADO_DIAS else "estudado"
-
-    _gravar_meta(arquivo, mudar)
-    return asdict(_topico(vault, arquivo))
-
-
-def cartas(vault: Path, materia: str, hoje: date, nota: str | None = None, todas: bool = False) -> list[dict]:
-    """Flashcards: de uma nota, das notas com revisão vencida ou (todas=True) de todas as já estudadas."""
-    if nota:
-        arquivos = [nota_da_materia(vault, materia, nota)]
-    else:
-        tops = topicos(vault, materia)
-        if todas:
-            escolhidos = [t for t in tops if t.estado != "novo"] or tops
-        else:
-            escolhidos = [t for t in tops if t.revisar and t.revisar <= hoje.isoformat()]
-        arquivos = [vault / t.nota for t in escolhidos]
-    saida = []
-    for arquivo in arquivos:
-        post = frontmatter.load(arquivo)
-        titulo = _titulo_md(post.content, arquivo.stem)
-        for i, p in enumerate(perguntas(post.content)):
-            saida.append({"id": f"{arquivo.relative_to(vault).as_posix()}#{i}", "nota": arquivo.relative_to(vault).as_posix(), "titulo": titulo, **p})
-    return saida
 
 
 # ---------- anotações do usuário ----------
@@ -312,6 +190,7 @@ def _anotacao(vault: Path, arquivo: Path) -> dict:
         "titulo": str(meta.get("titulo") or "").strip() or None,
         "texto": post.content.strip(),
         "topico": meta.get("topico") or None,
+        "origem": meta.get("origem") or None,
         "criado": str(meta.get("criado") or ""),
         "atualizado": str(meta.get("atualizado") or meta.get("criado") or ""),
     }
@@ -340,7 +219,8 @@ def _arquivo_anotacao(vault: Path, materia: str, arquivo: str) -> Path:
     return alvo
 
 
-def criar_anotacao(vault: Path, materia: str, texto: str, agora, titulo: str | None = None, topico: str | None = None) -> dict:
+def criar_anotacao(vault: Path, materia: str, texto: str, agora, titulo: str | None = None, topico: str | None = None,
+                   origem: str | None = None) -> dict:
     if topico:
         nota_da_materia(vault, materia, topico)  # valida que o tópico é desta matéria
     pasta = _pasta_anotacoes(vault, materia)
@@ -352,7 +232,7 @@ def criar_anotacao(vault: Path, materia: str, texto: str, agora, titulo: str | N
         arquivo = pasta / f"{base}-{n}.md"
         n += 1
     post = frontmatter.Post(texto.strip(), tipo="anotacao", titulo=titulo or None, topico=topico or None,
-                            criado=agora.isoformat(timespec="seconds"))
+                            origem=origem or None, criado=agora.isoformat(timespec="seconds"))
     post.metadata = {k: v for k, v in post.metadata.items() if v is not None}
     writer.escrever_atomico(arquivo, frontmatter.dumps(post, sort_keys=False) + "\n")
     return _anotacao(vault, arquivo)

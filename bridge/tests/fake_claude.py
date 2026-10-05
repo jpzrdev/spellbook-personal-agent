@@ -2,12 +2,15 @@
 
 O comportamento sai do texto do pedido (stdin):
 - Tier 2 (json): "ESCALAR" → decide escalar; "INVALIDO" → texto que não é JSON; senão responde.
+- Quiz (json): `<quiz_gerar quantidade="N" tipo="T">` → N perguntas do primeiro tópico do pedido;
+  `<quiz_corrigir>` → "certo" se a resposta do usuário contém "taxa", senão "errado".
 - Tier 3 (stream-json): escreve um arquivo em output/ e termina; "DEMORA" → fica parado 30 s;
   "FALHA" → termina com erro.
 """
 
 import json
 import os
+import re
 import sys
 import time
 import uuid
@@ -34,7 +37,26 @@ def main() -> None:
     usage = {"input_tokens": 100, "cache_read_input_tokens": 50, "output_tokens": 20}
 
     if formato == "json":
-        if "ESCALAR" in prompt:
+        if m := re.search(r'<quiz_gerar quantidade="(\d+)" tipo="(\w+)">', prompt):
+            n, tipo = int(m.group(1)), m.group(2)
+            topico = re.search(r'<topico caminho="([^"]+)"', prompt).group(1)
+            perguntas = [{"pergunta": f"Pergunta {i + 1}?", "resposta": "A taxa de variação.", "explicacao": "Porque sim.",
+                          "topico": topico, **({"opcoes": ["A", "B", "C", "D"], "correta": i % 4} if tipo == "multipla" else {})}
+                         for i in range(n)]
+            perguntas.append({"pergunta": "sem resposta"})  # inválida: o Bridge descarta
+            dados = {"perguntas": perguntas}
+            emitir({"type": "result", "subtype": "success", "is_error": False, "result": json.dumps(dados),
+                    "structured_output": dados, "session_id": session_id, "duration_ms": 900,
+                    "total_cost_usd": 0.002, "usage": usage, "modelUsage": {"claude-haiku-4-5": {}}})
+        elif "<quiz_corrigir>" in prompt:
+            usuario = prompt.split("<resposta_do_usuario>")[1]
+            certo = "taxa" in usuario
+            dados = {"veredito": "certo" if certo else "errado", "comentario": "Boa!" if certo else "Não é isso.",
+                     "complemento": "A derivada é a taxa de variação instantânea."}
+            emitir({"type": "result", "subtype": "success", "is_error": False, "result": json.dumps(dados),
+                    "structured_output": dados, "session_id": session_id, "duration_ms": 500,
+                    "total_cost_usd": 0.001, "usage": usage, "modelUsage": {"claude-haiku-4-5": {}}})
+        elif "ESCALAR" in prompt:
             dados = {"acao": "escalar", "motivo": "Precisa mexer no vault.", "tarefa": "Organize o raw/ (ESCALADO)", "skill": None}
             emitir({"type": "result", "subtype": "success", "is_error": False, "result": json.dumps(dados),
                     "structured_output": dados, "session_id": session_id, "duration_ms": 900,

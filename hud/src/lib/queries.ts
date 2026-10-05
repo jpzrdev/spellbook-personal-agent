@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { api, del, patch, post, postForm, put, type Anotacao, type TemaBiblioteca, type TemaBibliotecaDetalhe, type AcaoInterna, type AparelhoPush, type Custos, type Efemero, type EventoProposto, type Lembrete, type PropostaResumo, type Materia, type MateriaDetalhe, type Carta, type NivelRevisao, type Topico, type NoArvore, type Nota, type Recibo, type Hoje, type RespostaGandalf, type Rotina, type Sessao, type Skill, type Tarefa } from './api'
+import { api, del, patch, post, postForm, put, type Anotacao, type TemaBiblioteca, type TemaBibliotecaDetalhe, type AcaoInterna, type AparelhoPush, type Custos, type Efemero, type EventoProposto, type Lembrete, type PropostaResumo, type Materia, type MateriaDetalhe, type Quiz, type CorrecaoQuiz, type TipoQuiz, type NoArvore, type Nota, type Recibo, type Hoje, type RespostaGandalf, type Rotina, type Sessao, type Skill, type Tarefa } from './api'
 import { chat } from './chatStore'
 
 // Releitura periódica + ao focar a janela: edições feitas no Obsidian aparecem sozinhas.
@@ -195,45 +195,44 @@ export function useMateria(materia: string) {
   return useQuery({ queryKey: ['estudos', materia], queryFn: () => api<MateriaDetalhe>(`/estudos/${encodeURIComponent(materia)}`) })
 }
 
-export function useCartas(materia: string, filtro: { nota?: string | null; todas?: boolean }) {
-  const q = new URLSearchParams()
-  if (filtro.nota) q.set('nota', filtro.nota)
-  if (filtro.todas) q.set('todas', 'true')
+/** Quiz efêmero: gerado ao abrir a tela e descartado ao sair (gcTime 0, sem refazer sozinho). */
+export function useQuiz(materia: string, pedido: { quantidade: number; tipo: TipoQuiz; topico: string | null }, chave: string) {
   return useQuery({
-    queryKey: ['cartas', materia, filtro.nota ?? null, !!filtro.todas],
-    queryFn: () => api<Carta[]>(`/estudos/${encodeURIComponent(materia)}/cartas?${q}`),
-    staleTime: Infinity, // a sessão de revisão não muda no meio
+    queryKey: ['quiz', materia, pedido, chave],
+    queryFn: () => post<Quiz>(`/estudos/${encodeURIComponent(materia)}/quiz`, pedido),
+    staleTime: Infinity,
+    gcTime: 0,
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   })
 }
 
-function useInvalidarEstudos() {
+export function useCorrigirQuiz(materia: string) {
+  return useMutation({
+    mutationFn: (r: { pergunta: string; resposta_modelo: string; resposta: string; topico: string | null }) =>
+      post<CorrecaoQuiz>(`/estudos/${encodeURIComponent(materia)}/quiz/corrigir`, r),
+  })
+}
+
+/** Apaga a matéria inteira (tópicos, anotações e material). */
+export function useRemoverMateria() {
   const qc = useQueryClient()
-  return () =>
-    Promise.all(['estudos', 'tarefas', 'hoje'].map((k) => qc.invalidateQueries({ queryKey: [k] })))
-}
-
-export function useMarcarEstudado(materia: string) {
-  const invalidar = useInvalidarEstudos()
   return useMutation({
-    mutationFn: (nota: string) =>
-      post<{ topico: Topico; tarefas_concluidas: string[] }>(`/estudos/${encodeURIComponent(materia)}/estudado`, { nota }),
-    onSuccess: invalidar,
-  })
-}
-
-export function useRegistrarRevisao(materia: string) {
-  const invalidar = useInvalidarEstudos()
-  return useMutation({
-    mutationFn: ({ nota, nivel }: { nota: string; nivel: NivelRevisao }) =>
-      post<Topico>(`/estudos/${encodeURIComponent(materia)}/revisao`, { nota, nivel }),
-    onSuccess: invalidar,
+    mutationFn: (materia: string) =>
+      del<{ titulo: string; topicos: number; anotacoes: number; fontes: number }>(`/estudos/${encodeURIComponent(materia)}`),
+    onSuccess: (_, materia) => {
+      qc.removeQueries({ queryKey: ['estudos', materia] })
+      qc.removeQueries({ queryKey: ['anotacoes', materia] })
+      return qc.invalidateQueries({ queryKey: ['estudos'] })
+    },
   })
 }
 
 export function useGerarEstudo() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (p: { pedido: string; tipo: 'materia' | 'nota' | 'perguntas'; nota?: string }) => post<Sessao>('/estudos/gerar', p),
+    mutationFn: (p: { pedido: string; tipo: 'materia' | 'nota' | 'aprofundar'; nota?: string }) => post<Sessao>('/estudos/gerar', p),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sessoes'] }),
   })
 }
@@ -326,10 +325,10 @@ function useInvalidarAnotacoes(materia: string) {
 export function useSalvarAnotacao(materia: string) {
   const invalidar = useInvalidarAnotacoes(materia)
   return useMutation({
-    mutationFn: (a: { arquivo?: string; texto: string; titulo?: string | null; topico?: string | null }) =>
+    mutationFn: (a: { arquivo?: string; texto: string; titulo?: string | null; topico?: string | null; origem?: 'quiz' }) =>
       a.arquivo
         ? put<Anotacao>(`${qMateria(materia)}/anotacoes`, { arquivo: a.arquivo, texto: a.texto, titulo: a.titulo ?? null })
-        : post<Anotacao>(`${qMateria(materia)}/anotacoes`, { texto: a.texto, titulo: a.titulo ?? null, topico: a.topico ?? null }),
+        : post<Anotacao>(`${qMateria(materia)}/anotacoes`, { texto: a.texto, titulo: a.titulo ?? null, topico: a.topico ?? null, origem: a.origem ?? null }),
     onSuccess: invalidar,
   })
 }

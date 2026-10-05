@@ -1,6 +1,4 @@
-"""Aba Estudos: tópicos, flashcards, estudo, repetição espaçada e contexto da nota no chat."""
-
-from datetime import date
+"""Aba Estudos: acervo de tópicos, quiz efêmero, anotações, material e contexto da nota no chat."""
 
 import frontmatter
 
@@ -13,62 +11,94 @@ ordem: 1
 ---
 # Derivadas
 
-Resumo.
+## Ideia central
 
-## Perguntas
+A derivada mede a **taxa de variação** instantânea de uma função: o quanto ela muda quando a entrada muda um pouquinho.
 
-1. O que é a derivada?
-> [!note]- Resposta
-> A taxa de variação instantânea.
-> É o limite do quociente de Newton.
+## Regras
 
-2. **Derivada de x²?**
-
-> [!note]- Resposta
-> 2x
+- soma, produto, cadeia
 """
 
 
 def _preparar(vault):
     (vault / NOTA).write_text(CONTEUDO, encoding="utf-8")
-    (vault / "vida/tarefas.md").write_text(
-        "# Tarefas\n- [ ] Estudar Derivadas (cálculo) 📅 2026-10-03 #estudos/calculo\n", encoding="utf-8")
 
 
-def test_perguntas_do_callout():
-    pares = estudos.perguntas(CONTEUDO)
-    assert pares[0] == {"pergunta": "O que é a derivada?", "resposta": "A taxa de variação instantânea.\nÉ o limite do quociente de Newton."}
-    assert pares[1] == {"pergunta": "Derivada de x²?", "resposta": "2x"}
+def _recibos(vault):
+    return [frontmatter.load(p) for p in (vault / "recibos").rglob("*.md")]
 
 
-def test_proximo_intervalo():
-    assert estudos.proximo_intervalo(0, "facil") == 4 and estudos.proximo_intervalo(4, "facil") == 10
-    assert estudos.proximo_intervalo(10, "dificil") == 13 and estudos.proximo_intervalo(10, "errei") == 1
-
-
-def test_detalhe_estudar_e_revisar(client, vault):
+def test_detalhe_e_o_acervo_sem_progresso(client, vault):
     _preparar(vault)
     d = client.get("/estudos/calculo").json()
-    assert d["titulo"] == "Cálculo II" and d["topicos"][0]["titulo"] == "Derivadas"  # ordem: 1 vem primeiro
-    assert d["topicos"][0]["perguntas"] == 2 and d["topicos"][0]["estado"] == "novo"
-    assert d["proxima_tarefa"]["texto"].startswith("Estudar Derivadas")
-
-    r = client.post("/estudos/calculo/estudado", json={"nota": NOTA}).json()
-    assert r["topico"]["estado"] == "estudado" and r["topico"]["revisar"] == "2026-10-04"
-    assert r["tarefas_concluidas"] == ["Estudar Derivadas (cálculo)"]
-
-    cartas = client.get("/estudos/calculo/cartas", params={"nota": NOTA}).json()
-    assert [c["pergunta"] for c in cartas] == ["O que é a derivada?", "Derivada de x²?"]
-    t = client.post("/estudos/calculo/revisao", json={"nota": NOTA, "nivel": "facil"}).json()
-    assert t["intervalo"] == 4 and t["revisar"] == "2026-10-07" and t["revisoes"] == 1
-    meta = frontmatter.load(vault / NOTA).metadata
-    assert meta["revisar"] == date(2026, 10, 7) and "# Derivadas" in (vault / NOTA).read_text(encoding="utf-8")
+    assert d["titulo"] == "Cálculo II" and d["topicos_total"] == 2
+    t = d["topicos"][0]  # ordem: 1 vem primeiro
+    assert t["titulo"] == "Derivadas" and t["resumo"].startswith("A derivada mede a taxa de variação")
+    assert t["palavras"] > 20
+    for campo in ("estado", "revisar", "perguntas", "progresso", "pendentes", "tarefas"):
+        assert campo not in t and campo not in d
+    [m] = client.get("/estudos").json()
+    assert m["materia"] == "calculo" and m["titulos"] == ["Derivadas", "Limites"]
+    # rotas antigas de curso/flashcards saíram
+    assert client.post("/estudos/calculo/estudado", json={"nota": NOTA}).status_code in (404, 405)
+    assert client.get("/estudos/calculo/cartas").status_code == 404
 
 
-def test_caminhos_fora_da_materia_sao_recusados(client, vault):
-    assert client.post("/estudos/calculo/estudado", json={"nota": "vida/tarefas.md"}).status_code == 400
-    assert client.post("/estudos/calculo/estudado", json={"nota": "wiki/estudos/calculo/../../../CLAUDE.md"}).status_code == 400
+def test_quiz_do_topico_multipla_escolha(client, vault):
+    _preparar(vault)
+    client.post("/estudos/calculo/anotacoes", json={"texto": "Regra da cadeia é a mais cobrada", "topico": NOTA})
+    r = client.post("/estudos/calculo/quiz", json={"quantidade": 3, "tipo": "multipla", "topico": NOTA})
+    assert r.status_code == 200
+    q = r.json()
+    assert q["topico"] == NOTA and len(q["perguntas"]) == 3  # a pergunta inválida do modelo foi descartada
+    p = q["perguntas"][1]
+    assert p["opcoes"] == ["A", "B", "C", "D"] and p["correta"] == 1 and p["topico"] == NOTA
+    assert p["titulo_topico"] == "Derivadas"
+    # nada do quiz vai para o vault, só o recibo com o custo
+    [rec] = _recibos(vault)
+    assert rec["intent"] == "estudos.quiz" and "Pergunta 1" not in rec.content
+    assert not any("Pergunta 1" in a.read_text(encoding="utf-8") for a in vault.rglob("*.md"))
+
+
+def test_quiz_geral_texto_livre_e_correcao(client, vault):
+    _preparar(vault)
+    q = client.post("/estudos/calculo/quiz", json={"quantidade": 2, "tipo": "texto"}).json()
+    assert q["topico"] is None and all(p["opcoes"] is None for p in q["perguntas"])
+    assert q["perguntas"][0]["topico"].startswith("wiki/estudos/calculo/")
+    base = {"pergunta": "O que é a derivada?", "resposta_modelo": "A taxa de variação.", "topico": NOTA}
+    c = client.post("/estudos/calculo/quiz/corrigir", json={**base, "resposta": "é a taxa de variação"}).json()
+    assert c["veredito"] == "certo" and c["complemento"]
+    assert client.post("/estudos/calculo/quiz/corrigir", json={**base, "resposta": "não sei"}).json()["veredito"] == "errado"
+
+
+def test_quiz_limites_e_caminhos(client, vault):
+    assert client.post("/estudos/calculo/quiz", json={"quantidade": 99, "tipo": "texto"}).status_code == 422
+    assert client.post("/estudos/calculo/quiz", json={"quantidade": 3, "tipo": "outro"}).status_code == 422
+    assert client.post("/estudos/calculo/quiz", json={"topico": "vida/tarefas.md"}).status_code == 400
+    assert client.post("/estudos/calculo/quiz", json={"topico": "wiki/estudos/calculo/../../../CLAUDE.md"}).status_code == 400
+    assert client.post("/estudos/nao-existe/quiz", json={}).status_code == 404
     assert client.get("/estudos/nao-existe").status_code == 404
+
+
+def test_salvar_questao_do_quiz_como_anotacao(client, vault):
+    _preparar(vault)
+    a = client.post("/estudos/calculo/anotacoes", json={
+        "titulo": "Quiz: O que é a derivada?", "texto": "**Pergunta:** ...", "topico": NOTA, "origem": "quiz"}).json()
+    assert a["origem"] == "quiz" and a["topico"] == NOTA
+    assert frontmatter.load(vault / a["arquivo"])["origem"] == "quiz"
+
+
+def test_aprofundar_topico_usa_a_skill(client, vault):
+    _preparar(vault)
+    s = client.post("/estudos/gerar", json={"tipo": "aprofundar", "nota": NOTA}).json()
+    assert NOTA in s["tarefa"] and s["tarefa"].startswith("Aprofunde")
+    assert client.post("/estudos/gerar", json={"tipo": "aprofundar", "nota": "vida/tarefas.md"}).status_code == 400
+    assert client.post("/estudos/gerar", json={"tipo": "materia", "pedido": "  "}).status_code == 422
+
+
+def test_resumo_curto_pula_titulos_e_listas():
+    assert estudos._resumo_curto("## T\n\n- item\n\n> callout\n\nTexto **forte** com [[a/b|link]].") == "Texto forte com link."
 
 
 def test_pergunta_sobre_nota_vai_para_o_tier2_com_contexto(client, vault, monkeypatch):
@@ -154,3 +184,21 @@ def test_enviar_material_guarda_e_estrutura(client, vault):
     assert client.post("/estudos/calculo/material", data={"texto": "x", "estruturar": "false"}).json()["sessao"] is None
     assert client.post("/estudos/calculo/material", files=[("arquivos", ("a.exe", b"x", "application/octet-stream"))]).status_code == 422
     assert client.post("/estudos/calculo/material", data={}).status_code == 422
+
+
+def test_remover_materia_apaga_tudo_e_tira_do_indice(client, vault):
+    _preparar(vault)
+    indice = vault / "wiki/estudos/_index.md"
+    indice.write_text("# Estudos\n\n- [[wiki/estudos/calculo/_index|Cálculo II]]: derivadas.\n- [[wiki/estudos/calculo-3]]: outra.\n", encoding="utf-8")
+    client.post("/estudos/calculo/anotacoes", json={"texto": "minha nota", "topico": NOTA})
+    client.post("/estudos/calculo/material", data={"texto": "aula 1", "estruturar": "false"})
+    r = client.delete("/estudos/calculo")
+    assert r.status_code == 200
+    d = r.json()
+    assert (d["titulo"], d["topicos"], d["anotacoes"], d["fontes"]) == ("Cálculo II", 2, 1, 1)
+    assert not (vault / "wiki/estudos/calculo").exists()
+    texto = indice.read_text(encoding="utf-8")
+    assert "calculo/_index" not in texto and "calculo-3" in texto  # só a linha da matéria apagada
+    assert client.get("/estudos").json() == []
+    assert client.delete("/estudos/calculo").status_code == 404
+    assert client.delete("/estudos/..%2F..").status_code in (400, 404)

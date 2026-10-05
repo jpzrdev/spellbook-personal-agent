@@ -35,6 +35,7 @@ from app import biblioteca, clock, efemeros, propostas, push
 from app import lembretes as lembretes_ag
 from app.config import get_settings
 from app import estudos as estudos_mod
+from app import estudos_quiz as quiz
 from app.estudos import listar_materias
 from app.eventos import eventos_gerais
 from app.gandalf import claude_cli, tier3
@@ -497,17 +498,9 @@ def tarefas_da_biblioteca(slug: str, vault: Path = Depends(get_vault)) -> dict:
 
 # ---------- Estudos ----------
 
-class NotaDeEstudo(BaseModel):
-    nota: str = Field(min_length=1, max_length=500)
-
-
-class Revisao(NotaDeEstudo):
-    nivel: Literal["errei", "dificil", "facil"]
-
-
 class PedidoEstudo(BaseModel):
-    pedido: str = Field(min_length=1, max_length=2000)
-    tipo: Literal["materia", "nota", "perguntas"] = "materia"
+    pedido: str = Field(default="", max_length=2000)
+    tipo: Literal["materia", "nota", "aprofundar"] = "materia"
     nota: str | None = Field(default=None, max_length=500)
 
 
@@ -523,35 +516,61 @@ def _estudo(fn):
 
 @app.get("/estudos")
 def estudos(vault: Path = Depends(get_vault)) -> list[dict]:
-    return listar_materias(vault, clock.now().date())
+    return listar_materias(vault)
 
 
 @app.get("/estudos/{materia}")
 def estudos_materia(materia: str, vault: Path = Depends(get_vault)) -> dict:
-    return _estudo(lambda: estudos_mod.detalhe(vault, materia, clock.now().date()))
+    return _estudo(lambda: estudos_mod.detalhe(vault, materia))
 
 
-@app.get("/estudos/{materia}/cartas")
-def estudos_cartas(materia: str, nota: str | None = None, todas: bool = False, vault: Path = Depends(get_vault)) -> list[dict]:
-    """Flashcards (pergunta/resposta) das notas: uma nota, as com revisão vencida, ou todas."""
-    return _estudo(lambda: estudos_mod.cartas(vault, materia, clock.now().date(), nota=nota, todas=todas))
+@app.delete("/estudos/{materia}")
+def estudos_remover_materia(materia: str, vault: Path = Depends(get_vault)) -> dict:
+    """Apaga a matéria inteira: tópicos, anotações e material enviado. Não tem volta (fora do git do vault)."""
+    return _estudo(lambda: estudos_mod.remover_materia(vault, materia))
 
 
-@app.post("/estudos/{materia}/estudado")
-def estudos_estudado(materia: str, n: NotaDeEstudo, vault: Path = Depends(get_vault)) -> dict:
-    return _estudo(lambda: estudos_mod.marcar_estudado(vault, materia, n.nota, clock.now().date()))
+class PedidoQuiz(BaseModel):
+    quantidade: int = Field(default=5, ge=1, le=quiz.MAX_PERGUNTAS)
+    tipo: Literal["texto", "multipla"] = "multipla"
+    topico: str | None = Field(default=None, max_length=500)
 
 
-@app.post("/estudos/{materia}/revisao")
-def estudos_revisao(materia: str, r: Revisao, vault: Path = Depends(get_vault)) -> dict:
-    """Resultado da revisão de um tópico (o pior nível entre as cartas dele): agenda a próxima."""
-    return _estudo(lambda: estudos_mod.registrar_revisao(vault, materia, r.nota, r.nivel, clock.now().date()))
+class RespostaQuiz(BaseModel):
+    pergunta: str = Field(min_length=1, max_length=2000)
+    resposta_modelo: str = Field(min_length=1, max_length=4000)
+    resposta: str = Field(default="", max_length=4000)
+    topico: str | None = Field(default=None, max_length=500)
+
+
+def _quiz(fn):
+    try:
+        return _estudo(fn)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+    except claude_cli.ClaudeIndisponivel as e:
+        raise HTTPException(503, str(e)) from e
+    except claude_cli.ClaudeFalhou as e:
+        raise HTTPException(502, str(e)) from e
+
+
+@app.post("/estudos/{materia}/quiz")
+def estudos_quiz(materia: str, q: PedidoQuiz, vault: Path = Depends(get_vault)) -> dict:
+    """Quiz efêmero (não é guardado): perguntas do tópico ou, sem tópico, de toda a matéria."""
+    return _quiz(lambda: quiz.gerar(vault, materia, q.quantidade, q.tipo, clock.now(), q.topico or None))
+
+
+@app.post("/estudos/{materia}/quiz/corrigir")
+def estudos_quiz_corrigir(materia: str, r: RespostaQuiz, vault: Path = Depends(get_vault)) -> dict:
+    """Corrige uma resposta de texto livre do quiz (a múltipla escolha o HUD confere sozinho)."""
+    return _quiz(lambda: quiz.corrigir(vault, materia, r.pergunta, r.resposta_modelo, r.resposta, clock.now(), r.topico or None))
 
 
 class NovaAnotacao(BaseModel):
     texto: str = Field(min_length=1, max_length=50_000)
     titulo: str | None = Field(default=None, max_length=120)
     topico: str | None = Field(default=None, max_length=500)
+    origem: Literal["quiz"] | None = None  # questão salva do quiz
 
 
 class EdicaoAnotacao(BaseModel):
@@ -568,7 +587,7 @@ def estudos_anotacoes(materia: str, topico: str | None = None, vault: Path = Dep
 
 @app.post("/estudos/{materia}/anotacoes", status_code=201)
 def estudos_criar_anotacao(materia: str, a: NovaAnotacao, vault: Path = Depends(get_vault)) -> dict:
-    return _estudo(lambda: estudos_mod.criar_anotacao(vault, materia, a.texto, clock.now(), a.titulo, a.topico))
+    return _estudo(lambda: estudos_mod.criar_anotacao(vault, materia, a.texto, clock.now(), a.titulo, a.topico, a.origem))
 
 
 @app.put("/estudos/{materia}/anotacoes")
@@ -625,20 +644,19 @@ async def estudos_material(
 
 @app.post("/estudos/gerar", status_code=201)
 def estudos_gerar(p: PedidoEstudo, vault: Path = Depends(get_vault)) -> dict:
-    """Gera material com o Claude Code: matéria nova/completar (skill preparar-estudos), nota nova ou mais perguntas."""
-    if p.tipo == "perguntas":
-        if not p.nota or not p.nota.startswith("wiki/estudos/") or ".." in p.nota:
+    """Gera material com o Claude Code (skill preparar-estudos): matéria nova, tópico novo ou aprofundar um tópico."""
+    skill = "preparar-estudos" if any(x.nome == "preparar-estudos" for x in listar_skills(vault)) else None
+    if p.tipo == "aprofundar":
+        if not p.nota or not p.nota.startswith("wiki/estudos/") or ".." in p.nota or not (vault / p.nota).is_file():
             raise HTTPException(400, "informe a nota (wiki/estudos/...)")
-        tarefa = (
-            f"Acrescente à nota `{p.nota}` de 3 a 5 perguntas novas de autoavaliação, no formato já usado nela "
-            "(item numerado + resposta num callout recolhido `> [!note]- Resposta`). Não mexa no resto da nota. "
-            f"Pedido do usuário: {p.pedido}"
-        )
-        s = tier3.gerenciador(vault).criar(tarefa, pedido=f"Mais perguntas: {p.nota.split('/')[-1]}")
-    else:
-        skill = "preparar-estudos" if any(x.nome == "preparar-estudos" for x in listar_skills(vault)) else None
-        prefixo = "Complete a matéria existente com um tópico novo" if p.tipo == "nota" else "Monte o material de estudo"
-        s = tier3.gerenciador(vault).criar(f"{prefixo}: {p.pedido}", pedido=f"Estudos: {p.pedido[:80]}", skill=skill)
+        extra = f" Pedido do usuário: {p.pedido.strip()}" if p.pedido.strip() else ""
+        tarefa = f"Aprofunde o tópico existente `{p.nota}`.{extra}"
+        s = tier3.gerenciador(vault).criar(tarefa, pedido=f"Aprofundar: {p.nota.split('/')[-1]}", skill=skill)
+        return s.resumo()
+    if not p.pedido.strip():
+        raise HTTPException(422, "diga o que estudar")
+    prefixo = "Complete a matéria existente com um tópico novo" if p.tipo == "nota" else "Monte o material de estudo"
+    s = tier3.gerenciador(vault).criar(f"{prefixo}: {p.pedido}", pedido=f"Estudos: {p.pedido[:80]}", skill=skill)
     return s.resumo()
 
 
