@@ -9,6 +9,7 @@ import frontmatter
 from app import studies
 from app.migrations import english_layout as mig
 from app.receipts_index import read_receipts
+from app.setup_vault import copy_template
 from app.vault import reader
 
 OLD_VAULT = {
@@ -29,10 +30,14 @@ OLD_VAULT = {
         "## Pedido\nRotina: Aviso da manhã\n\n## Resposta\nFalhou.\n"
     ),
     "wiki/estudos/calc/_index.md": "---\ntipo: indice\n---\n# Cálculo\n\n- [[wiki/estudos/calc/limites]]\n",
-    "wiki/estudos/calc/limites.md": "---\ntipo: conceito\nordem: 1\ncriado: 2026-10-04\n---\n# Limites\n\nTexto.\n",
+    "wiki/estudos/calc/limites.md": (
+        "---\ntipo: conceito\nordem: 1\ncriado: 2026-10-04\nfontes:\n  - wiki/estudos/calc/_fontes/livro.pdf\n---\n"
+        "# Limites\n\nTexto.\n"
+    ),
     "wiki/estudos/calc/_anotacoes/2026-10-04-a.md": (
         "---\ntipo: anotacao\ntopico: wiki/estudos/calc/limites.md\ncriado: '2026-10-04T16:36:39-03:00'\n---\nMinha nota.\n"
     ),
+    "wiki/estudos/calc/_fontes/livro.pdf": "pdf",
     "wiki/sobre-mim/perfil.md": "---\ntipo: perfil\n---\n# Perfil\n",
     "raw/_processados.md": "# Itens processados\n",
     "raw/2026-10-05-x.md": "---\ntipo: captura\ncriado: 2026-10-05T00:06:52-03:00\norigem: voz\n---\nasd\n",
@@ -127,3 +132,35 @@ def test_bridge_data_and_env(tmp_path):
     lines = env.read_text(encoding="utf-8").splitlines()
     assert "GANDALF_TIER2_MODEL=sonnet" in lines and "GANDALF_DAILY_CALL_LIMIT=10" in lines
     assert "JEV_LIMITE_DIARIO_USD=1" in lines and "GANDALF_LANGUAGE=pt-BR" in lines and "BRIDGE_TOKEN=t" in lines
+
+
+def test_links_into_subject_folders_are_rewritten(tmp_path):
+    vault = _old_vault(tmp_path)
+    mig.migrate_vault(vault, mig.Plan(apply=True))
+    assert (vault / "wiki/studies/calc/_sources/livro.pdf").exists()
+    topic = frontmatter.load(vault / "wiki/studies/calc/limites.md")
+    assert topic["sources"] == ["wiki/studies/calc/_sources/livro.pdf"]
+    assert mig.rewrite_paths("wiki/estudos/calc/_anotacoes/a.md") == "wiki/studies/calc/_annotations/a.md"
+
+
+def test_vault_started_with_the_new_template_before_migrating(tmp_path):
+    vault = _old_vault(tmp_path)
+    copy_template(mig.TEMPLATE, vault)  # what the start scripts do
+    (vault / "life/reminders.md").write_text("# Reminders\n\n- [ ] Already edited\n", encoding="utf-8")
+
+    dry = mig.Plan(apply=False)
+    mig.migrate_vault(vault, dry)
+    assert dry.warnings == ["life/reminders.md already exists: vida/lembretes.md was not moved onto it "
+                            "(it keeps its old name); merge them by hand"]
+
+    plan = mig.Plan(apply=True)
+    mig.migrate_vault(vault, plan)
+    assert plan.warnings == dry.warnings
+    # untouched template copies were replaced by the user's files
+    assert [x.text for x in reader.read_tasks(vault)] == ["Pagar boleto"]
+    assert frontmatter.load(vault / "life/routines/morning-notice.md")["name"] == "Aviso da manhã"
+    assert "Use life/agenda/." in (vault / ".claude/skills/schedule-event/SKILL.md").read_text(encoding="utf-8")
+    assert not (vault / ".claude/skills/agendar").exists()
+    # the real conflict keeps both files
+    assert "Already edited" in (vault / "life/reminders.md").read_text(encoding="utf-8")
+    assert "Tomar remédio" in (vault / "life/lembretes.md").read_text(encoding="utf-8")

@@ -49,7 +49,7 @@ cd bridge && uv run python -m app.migrations.english_layout          # dry run: 
 cd bridge && uv run python -m app.migrations.english_layout --apply  # applies it
 ```
 
-Commit the vault's git before applying, so it can be undone.
+Commit the vault's git before applying, so it can be undone. Run it before the first start of the new version if you can: the start scripts copy the new template into the vault, and the migration only replaces a file that is still an untouched template copy. Any other conflict is listed in the dry run and left for you to merge.
 
 ## Tests
 

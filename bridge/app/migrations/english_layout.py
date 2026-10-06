@@ -9,7 +9,9 @@ Usage (stop the Bridge first):
     uv run python -m app.migrations.english_layout --apply    # applies it
 Options: --language pt-BR (written to GANDALF_LANGUAGE in the .env if it's missing), --vault <path>.
 
-Commit the vault's git before applying: everything can then be undone with git.
+Commit the vault's git before applying: everything can then be undone with git. Run it before the first start of
+the new version if you can: the start scripts copy the new template into the vault, and a file already at a
+destination is only replaced when it's an untouched template copy (anything else is reported and left in place).
 """
 
 import argparse
@@ -214,9 +216,15 @@ def rewrite_frontmatter(block: str, kind_hint: str | None = None) -> str:
     return "\n".join(out)
 
 
+def _sub_path(pattern: str, repl: str, text: str) -> str:
+    # A pattern that starts with "/" follows a folder name (`calc/_fontes`), so it can't use the lookbehind that keeps
+    # the others from matching inside a longer name.
+    return re.sub(pattern if pattern.startswith("/") else r"(?<![\w-])" + pattern, repl, text)
+
+
 def rewrite_paths(text: str) -> str:
     for pattern, repl in PATHS:
-        text = re.sub(r"(?<![\w-])" + pattern, repl, text)
+        text = _sub_path(pattern, repl, text)
     return text
 
 
@@ -247,21 +255,37 @@ class Plan:
             action()
 
     def warn(self, message: str) -> None:
-        self.warnings.append(message)
+        if message not in self.warnings:
+            self.warnings.append(message)
 
 
-def _merge_move(src: Path, dst: Path) -> None:
-    """Moves src to dst; if dst is an existing folder, moves the contents (without overwriting files)."""
-    if not dst.exists():
+def _is_template_copy(vault: Path, path: Path) -> bool:
+    """Whether path (a file, or a folder and all its files) is an untouched copy of the template at the same place
+    (setup_vault adds those)."""
+    template = TEMPLATE / path.relative_to(vault)
+    if path.is_dir():
+        return template.is_dir() and all(_is_template_copy(vault, p) for p in path.rglob("*") if p.is_file())
+    return path.is_file() and template.is_file() and sha1(path) == sha1(template)
+
+
+def _merge_move(vault: Path, src: Path, dst: Path, plan: Plan, apply: bool = True) -> None:
+    """Moves src to dst; if dst is an existing folder, moves the contents. An existing file is replaced only when it's
+    an untouched template copy; otherwise both are kept and the conflict is reported. With apply=False it only reports."""
+    if src.is_dir() and dst.is_dir():
+        for child in sorted(src.iterdir()):
+            _merge_move(vault, child, dst / child.name, plan, apply)
+        if apply and not any(src.iterdir()):
+            src.rmdir()
+        return
+    if dst.exists() and not _is_template_copy(vault, dst):
+        plan.warn(f"{dst.relative_to(vault).as_posix()} already exists: {src.relative_to(vault).as_posix()} was not "
+                  "moved onto it (it keeps its old name); merge them by hand")
+        return
+    if apply:
+        if dst.exists():
+            dst.unlink()
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(src), str(dst))
-        return
-    if src.is_dir() and dst.is_dir():
-        for child in list(src.iterdir()):
-            _merge_move(child, dst / child.name)
-        src.rmdir()
-        return
-    raise FileExistsError(f"{dst} already exists")
 
 
 def migrate_vault(vault: Path, plan: Plan) -> None:
@@ -273,14 +297,16 @@ def migrate_vault(vault: Path, plan: Plan) -> None:
             skill_md = folder / "SKILL.md"
             template_skill = TEMPLATE / ".claude" / "skills" / SKILLS[folder.name]
             pristine = skill_md.is_file() and OLD_TEMPLATE_SKILLS.get(sha1(skill_md)) == folder.name
-            if new.exists():
-                plan.warn(f"skill {new.name} already exists; left {folder.relative_to(vault)} untouched")
+            if new.exists() and not _is_template_copy(vault, new):
+                plan.warn(f"skill {new.name} already exists; left {folder.relative_to(vault).as_posix()} untouched")
                 continue
             if pristine and template_skill.is_dir():
                 plan.do(f"skill {folder.name} → {new.name} (untouched template copy: replaced by the new template)",
-                        lambda f=folder, n=new, t=template_skill: (shutil.rmtree(f), shutil.copytree(t, n)))
+                        lambda f=folder, n=new, t=template_skill: (shutil.rmtree(f), shutil.rmtree(n, ignore_errors=True),
+                                                                   shutil.copytree(t, n)))
             else:
                 def rename_skill(f=folder, n=new):
+                    shutil.rmtree(n, ignore_errors=True)  # an untouched template copy, if setup_vault added one
                     shutil.move(str(f), str(n))
                     md = n / "SKILL.md"
                     if md.is_file():
@@ -301,7 +327,10 @@ def migrate_vault(vault: Path, plan: Plan) -> None:
     routines = vault / "vida" / "rotinas"
     if routines.is_dir():
         for path in sorted(routines.glob("*.md")):
-            if path.stem in ROUTINES and not (routines / f"{ROUTINES[path.stem]}.md").exists():
+            name = f"{ROUTINES.get(path.stem)}.md"
+            target = vault / "life" / "routines" / name
+            if path.stem in ROUTINES and not (routines / name).exists() and (
+                    not target.exists() or _is_template_copy(vault, target)):
                 plan.do(f"vida/rotinas/{path.name} → {ROUTINES[path.stem]}.md",
                         lambda p=path: p.rename(p.with_name(f"{ROUTINES[p.stem]}.md")))
 
@@ -309,7 +338,8 @@ def migrate_vault(vault: Path, plan: Plan) -> None:
     for old, new in MOVES:
         src, dst = vault / old, vault / new
         if src.exists():
-            plan.do(f"{old} → {new}", lambda s=src, d=dst: _merge_move(s, d))
+            _merge_move(vault, src, dst, plan, apply=False)  # reports the conflicts in the dry run too
+            plan.do(f"{old} → {new}", lambda s=src, d=dst: _merge_move(vault, s, d, plan))
 
     # 5) subject folders (_anotacoes, _fontes)
     for studies in (vault / "wiki" / "studies", vault / "wiki" / "estudos"):
@@ -318,8 +348,9 @@ def migrate_vault(vault: Path, plan: Plan) -> None:
         for subject in sorted(p for p in studies.iterdir() if p.is_dir()):
             for old, new in SUBJECT_FOLDERS.items():
                 if (subject / old).is_dir():
+                    _merge_move(vault, subject / old, subject / new, plan, apply=False)
                     plan.do(f"{subject.relative_to(vault).as_posix()}/{old} → {new}",
-                            lambda s=subject / old, d=subject / new: _merge_move(s, d))
+                            lambda s=subject / old, d=subject / new: _merge_move(vault, s, d, plan))
 
     # 6) note contents: frontmatter keys/values, receipt headings and path references
     changed = []
@@ -348,7 +379,7 @@ def migrate_vault(vault: Path, plan: Plan) -> None:
 def _moved(vault: Path, old: Path) -> Path | None:
     rel = old.relative_to(vault).as_posix()
     for pattern, repl in PATHS:
-        rel = re.sub(r"(?<![\w-])" + pattern, repl, rel)
+        rel = _sub_path(pattern, repl, rel)
     for o, n in ROUTINES.items():
         rel = re.sub(rf"^life/routines/{re.escape(o)}\.md$", f"life/routines/{n}.md", rel)
     for o, n in SKILLS.items():
