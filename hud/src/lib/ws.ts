@@ -1,85 +1,85 @@
 import { useEffect, useRef, useState } from 'react'
-import { TOKEN, type EventoSessao, type Sessao } from './api'
+import { TOKEN, type Session, type SessionEvent } from './api'
 
-/** URL de WebSocket via o proxy /api do Vite (o token vai na query: o navegador não manda header em WS). */
+/** WebSocket URL through Vite's /api proxy (the token goes in the query: browsers send no header on WS). */
 export function wsUrl(path: string): string {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
   return `${proto}//${location.host}/api${path}?token=${encodeURIComponent(TOKEN ?? '')}`
 }
 
-/** Conecta com reconexão simples (backoff até 10 s) e entrega cada mensagem JSON. */
-export function useWebSocket(path: string | null, onMensagem: (dado: EventoSessao) => void) {
-  const callback = useRef(onMensagem)
+/** Connects with simple reconnection (backoff up to 10 s) and delivers each JSON message. */
+export function useWebSocket(path: string | null, onMessage: (data: SessionEvent) => void) {
+  const callback = useRef(onMessage)
   useEffect(() => {
-    callback.current = onMensagem
+    callback.current = onMessage
   })
-  const [conectado, setConectado] = useState(false)
-  // Recusado pelo servidor (1008: token inválido ou sessão inexistente), por caminho.
-  const [recusado, setRecusado] = useState<string | null>(null)
+  const [connected, setConnected] = useState(false)
+  // Refused by the server (1008: invalid token or missing session), per path.
+  const [refused, setRefused] = useState<string | null>(null)
 
   useEffect(() => {
     if (!path) return
     let ws: WebSocket | null = null
-    let tentativa = 0
+    let attempt = 0
     let timer: number | undefined
-    let ativo = true
+    let alive = true
 
-    const conectar = () => {
+    const connect = () => {
       ws = new WebSocket(wsUrl(path))
       ws.onopen = () => {
-        tentativa = 0
-        setConectado(true)
+        attempt = 0
+        setConnected(true)
       }
       ws.onmessage = (e) => {
         try {
           callback.current(JSON.parse(e.data))
         } catch {
-          // mensagem não-JSON: ignora
+          // non-JSON message: ignore
         }
       }
       ws.onclose = (e) => {
-        setConectado(false)
-        // 1008 = token inválido / sessão inexistente: não adianta tentar de novo.
-        if (e.code === 1008) setRecusado(path)
-        if (!ativo || e.code === 1008) return
-        timer = window.setTimeout(conectar, Math.min(10_000, 500 * 2 ** tentativa++))
+        setConnected(false)
+        // 1008 = invalid token / missing session: retrying is pointless.
+        if (e.code === 1008) setRefused(path)
+        if (!alive || e.code === 1008) return
+        timer = window.setTimeout(connect, Math.min(10_000, 500 * 2 ** attempt++))
       }
     }
-    conectar()
+    connect()
     return () => {
-      ativo = false
+      alive = false
       window.clearTimeout(timer)
       ws?.close()
     }
   }, [path])
 
-  return { conectado, recusado: recusado !== null && recusado === path }
+  return { connected, refused: refused !== null && refused === path }
 }
 
-type EstadoStream = { id: string | null; eventos: EventoSessao[]; resumo: Sessao | null }
+type StreamState = { id: string | null; events: SessionEvent[]; summary: Session | null }
 
-/** Stream de uma sessão do Tier 3: eventos acumulados + último resumo. */
-export function useSessaoStream(sessaoId: string | null) {
-  const [estado, setEstado] = useState<EstadoStream>({ id: sessaoId, eventos: [], resumo: null })
-  const vistos = useRef<{ id: string | null; seqs: Set<number> }>({ id: sessaoId, seqs: new Set() })
+/** The stream of a Tier 3 session: accumulated events + the latest summary. */
+export function useSessionStream(sessionId: string | null) {
+  const [state, setState] = useState<StreamState>({ id: sessionId, events: [], summary: null })
+  const seen = useRef<{ id: string | null; seqs: Set<number> }>({ id: sessionId, seqs: new Set() })
 
-  const { conectado, recusado } = useWebSocket(sessaoId ? `/ws/stream/${sessaoId}` : null, (ev) => {
-    if (vistos.current.id !== sessaoId) vistos.current = { id: sessaoId, seqs: new Set() }
-    // Ao reconectar o servidor reenvia o buffer: descarta o que já veio (pelo _seq).
+  const { connected, refused } = useWebSocket(sessionId ? `/ws/stream/${sessionId}` : null, (ev) => {
+    if (seen.current.id !== sessionId) seen.current = { id: sessionId, seqs: new Set() }
+    // On reconnect the server resends the buffer: drop what already came (by _seq).
     const seq = ev._seq
     if (typeof seq === 'number') {
-      if (vistos.current.seqs.has(seq)) return
-      vistos.current.seqs.add(seq)
+      if (seen.current.seqs.has(seq)) return
+      seen.current.seqs.add(seq)
     }
-    setEstado((prev) => {
-      const base = prev.id === sessaoId ? prev : { id: sessaoId, eventos: [], resumo: null }
-      const resumo = ev.type === 'lifeos_status' || ev.type === 'lifeos_fim' ? (ev.resumo as Sessao) : base.resumo
-      const eventos = ev.type === 'lifeos_status' ? base.eventos : [...base.eventos, ev]
-      return { id: sessaoId, eventos, resumo }
+    setState((prev) => {
+      const base = prev.id === sessionId ? prev : { id: sessionId, events: [], summary: null }
+      const summary = ev.type === 'gandalf_status' || ev.type === 'gandalf_end' ? (ev.summary as Session) : base.summary
+      const events = ev.type === 'gandalf_status' ? base.events : [...base.events, ev]
+      return { id: sessionId, events, summary }
     })
   })
 
-  // Trocou de sessão e ainda não chegou nada da nova: mostra vazio (derivado, sem efeito).
-  const atual = estado.id === sessaoId ? estado : { eventos: [], resumo: null }
-  return { eventos: atual.eventos, resumo: atual.resumo, conectado, indisponivel: recusado && !atual.resumo }
+  // Switched sessions and nothing from the new one has arrived yet: show empty (derived, no effect).
+  const current = state.id === sessionId ? state : { events: [], summary: null }
+  return { events: current.events, summary: current.summary, connected, unavailable: refused && !current.summary }
 }

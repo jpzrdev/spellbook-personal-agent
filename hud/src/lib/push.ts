@@ -1,99 +1,99 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, post } from './api'
 
-// Notificações Web Push: o service worker (public/sw.js) recebe e mostra; o Bridge envia.
-// Só funciona no build de produção (o SW não é registrado no dev) e, no iPhone, só com o app
-// adicionado à tela de início.
+// Web Push notifications: the service worker (public/sw.js) receives and shows them; the Bridge sends them.
+// Only works in the production build (the SW isn't registered in dev) and, on iPhone, only with the app
+// added to the home screen.
 
-export type EstadoPush = 'carregando' | 'dev' | 'sem-suporte' | 'instalar' | 'bloqueado' | 'desligado' | 'ligado'
+export type PushState = 'loading' | 'dev' | 'unsupported' | 'install' | 'blocked' | 'off' | 'on'
 
-function ehIOS(): boolean {
+function isIOS(): boolean {
   return /iPhone|iPad|iPod/.test(navigator.userAgent)
 }
 
-function instalado(): boolean {
+function installed(): boolean {
   return window.matchMedia?.('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true
 }
 
-export function nomeAparelho(): string {
+export function deviceName(): string {
   const ua = navigator.userAgent
-  const so = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows' : /Mac/.test(ua) ? 'Mac' : 'Aparelho'
-  const nav = /Edg\//.test(ua) ? 'Edge' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : ''
-  return [so, nav, instalado() ? '(app)' : ''].filter(Boolean).join(' ')
+  const os = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows' : /Mac/.test(ua) ? 'Mac' : 'Device'
+  const browser = /Edg\//.test(ua) ? 'Edge' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : ''
+  return [os, browser, installed() ? '(app)' : ''].filter(Boolean).join(' ')
 }
 
-function chaveParaBytes(base64url: string): Uint8Array<ArrayBuffer> {
+function keyToBytes(base64url: string): Uint8Array<ArrayBuffer> {
   const base64 = (base64url + '='.repeat((4 - (base64url.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/')
-  const bruto = atob(base64)
-  const bytes = new Uint8Array(new ArrayBuffer(bruto.length))
-  for (let i = 0; i < bruto.length; i++) bytes[i] = bruto.charCodeAt(i)
+  const raw = atob(base64)
+  const bytes = new Uint8Array(new ArrayBuffer(raw.length))
+  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i)
   return bytes
 }
 
-async function registro(): Promise<ServiceWorkerRegistration | null> {
+async function registration(): Promise<ServiceWorkerRegistration | null> {
   if (!('serviceWorker' in navigator)) return null
   return (await navigator.serviceWorker.getRegistration()) ?? null
 }
 
-async function estadoAtual(): Promise<EstadoPush> {
+async function currentState(): Promise<PushState> {
   if (!import.meta.env.PROD) return 'dev'
-  if (ehIOS() && !instalado()) return 'instalar'
-  if (!('PushManager' in window) || !('Notification' in window) || !('serviceWorker' in navigator)) return 'sem-suporte'
-  if (Notification.permission === 'denied') return 'bloqueado'
-  const reg = await registro()
+  if (isIOS() && !installed()) return 'install'
+  if (!('PushManager' in window) || !('Notification' in window) || !('serviceWorker' in navigator)) return 'unsupported'
+  if (Notification.permission === 'denied') return 'blocked'
+  const reg = await registration()
   const sub = await reg?.pushManager.getSubscription()
-  if (!sub) return 'desligado'
-  // Reenvia a inscrição (idempotente): se o Bridge perdeu bridge/dados/, volta a funcionar.
-  post('/push/inscrever', { inscricao: sub.toJSON(), aparelho: nomeAparelho() }).catch(() => {})
-  return 'ligado'
+  if (!sub) return 'off'
+  // Resends the subscription (idempotent): if the Bridge lost bridge/data/, it works again.
+  post('/push/subscribe', { subscription: sub.toJSON(), device: deviceName() }).catch(() => {})
+  return 'on'
 }
 
 export function usePush() {
-  const [estado, setEstado] = useState<EstadoPush>('carregando')
-  const [erro, setErro] = useState<string | null>(null)
+  const [state, setState] = useState<PushState>('loading')
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    let vivo = true
-    estadoAtual().then((e) => vivo && setEstado(e)).catch(() => vivo && setEstado('sem-suporte'))
+    let alive = true
+    currentState().then((s) => alive && setState(s)).catch(() => alive && setState('unsupported'))
     return () => {
-      vivo = false
+      alive = false
     }
   }, [])
 
-  // Precisa ser chamado num toque do usuário (exigência do iOS para pedir permissão).
-  const ativar = useCallback(async () => {
-    setErro(null)
+  // Must be called from a user tap (iOS requires it to ask for permission).
+  const enable = useCallback(async () => {
+    setError(null)
     try {
-      const permissao = await Notification.requestPermission()
-      if (permissao !== 'granted') {
-        setEstado(permissao === 'denied' ? 'bloqueado' : 'desligado')
+      const permission = await Notification.requestPermission()
+      if (permission !== 'granted') {
+        setState(permission === 'denied' ? 'blocked' : 'off')
         return
       }
-      const { chave } = await api<{ chave: string }>('/push/chave')
+      const { key } = await api<{ key: string }>('/push/key')
       const reg = await navigator.serviceWorker.ready
       const sub =
         (await reg.pushManager.getSubscription()) ??
-        (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: chaveParaBytes(chave) }))
-      await post('/push/inscrever', { inscricao: sub.toJSON(), aparelho: nomeAparelho() })
-      setEstado('ligado')
+        (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyToBytes(key) }))
+      await post('/push/subscribe', { subscription: sub.toJSON(), device: deviceName() })
+      setState('on')
     } catch (e) {
-      setErro(e instanceof Error ? e.message : String(e))
+      setError(e instanceof Error ? e.message : String(e))
     }
   }, [])
 
-  const desativar = useCallback(async () => {
-    setErro(null)
+  const disable = useCallback(async () => {
+    setError(null)
     try {
-      const sub = await (await registro())?.pushManager.getSubscription()
+      const sub = await (await registration())?.pushManager.getSubscription()
       if (sub) {
-        await post('/push/cancelar', { endpoint: sub.endpoint }).catch(() => {})
+        await post('/push/unsubscribe', { endpoint: sub.endpoint }).catch(() => {})
         await sub.unsubscribe()
       }
-      setEstado('desligado')
+      setState('off')
     } catch (e) {
-      setErro(e instanceof Error ? e.message : String(e))
+      setError(e instanceof Error ? e.message : String(e))
     }
   }, [])
 
-  return { estado, erro, ativar, desativar }
+  return { state, error, enable, disable }
 }

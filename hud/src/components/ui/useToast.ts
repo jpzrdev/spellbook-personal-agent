@@ -1,12 +1,12 @@
 import { createContext, useContext, type ReactNode } from 'react'
 
-export type ToastTipo = 'sucesso' | 'erro' | 'info'
-export type MostrarToast = (tipo: ToastTipo, texto: ReactNode) => void
+export type ToastKind = 'success' | 'error' | 'info'
+export type ShowToast = (kind: ToastKind, text: ReactNode) => void
 
-export const ToastContext = createContext<MostrarToast | null>(null)
+export const ToastContext = createContext<ShowToast | null>(null)
 
-export function useToast(): MostrarToast {
+export function useToast(): ShowToast {
   const ctx = useContext(ToastContext)
-  if (!ctx) throw new Error('useToast precisa estar dentro de <ToastProvider>')
+  if (!ctx) throw new Error('useToast must be used inside <ToastProvider>')
   return ctx
 }

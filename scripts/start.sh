@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Sobe o Bridge e o HUD juntos (macOS/Linux/Git Bash). Ctrl+C encerra os dois.
+# Starts the Bridge and the HUD together (macOS/Linux/Git Bash). Ctrl+C stops both.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 
 if [ ! -f "$root/.env" ]; then
   token="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))' 2>/dev/null || python -c 'import secrets; print(secrets.token_urlsafe(32))')"
   sed "s/^BRIDGE_TOKEN=$/BRIDGE_TOKEN=$token/" "$root/.env.example" > "$root/.env"
-  echo ".env criado a partir do .env.example (token gerado)."
+  echo ".env created from .env.example (token generated)."
 fi
 
 (cd "$root/bridge" && uv run python -m app.setup_vault)

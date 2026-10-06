@@ -6,11 +6,11 @@ import './index.css'
 
 const queryClient = new QueryClient()
 
-// Service worker só no build de produção (no dev ele atrapalharia o recarregamento do Vite).
+// Service worker only in the production build (in dev it would get in the way of Vite's reloading).
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch(() => {
-      // sem SW o app funciona igual; só não fica instalável/offline
+      // without a SW the app works the same; it just isn't installable/offline
     })
   })
 }

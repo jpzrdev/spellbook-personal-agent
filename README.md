@@ -1,46 +1,57 @@
 # Gandalf
 
-Sistema pessoal para agenda, estudos, rotinas e conhecimento: um HUD web, um backend (Bridge) com o roteador Gandalf e um vault do Obsidian como memória.
+A personal system for your agenda, studies, routines and knowledge: a web HUD, a backend (the Bridge) with the Gandalf router, and an Obsidian vault as memory.
 
-> Projeto pessoal em desenvolvimento. Interface e notas em português do Brasil.
+> A personal project in development. The code and the interface are in English; the assistant talks to you and writes your notes in the language you choose (`GANDALF_LANGUAGE`: `en` or `pt-BR`).
 
-## Como funciona
+## How it works
 
-- **HUD** (`hud/`): React + Vite + TypeScript + Tailwind v4, instalável como app (PWA) no celular.
-- **Bridge** (`bridge/`): FastAPI em Python 3.12. Roteia cada pedido em 3 níveis:
-  1. **Regras** (sem IA): tarefas, lembretes, agenda do dia, respondidos direto do vault.
-  2. **Haiku** via Claude Code: triagem e respostas rápidas.
-  3. **Claude Code headless**: tarefas longas (pesquisas, resumos, estudos) com skills e ferramentas restritas.
-- **Vault** (`vault-template/`): notas em Markdown (Obsidian) que servem de memória: wiki, tarefas, rotinas, diário e recibos de cada pedido.
-- **Rotinas** agendadas por cron (definidas em notas do vault), notificações push, voz offline (Whisper + Kokoro) e conectores do Google Agenda e Gmail.
+- **HUD** (`hud/`): React + Vite + TypeScript + Tailwind v4, installable as an app (PWA) on the phone.
+- **Bridge** (`bridge/`): FastAPI on Python 3.12. Routes each request through 3 tiers:
+  1. **Rules** (no AI): tasks, reminders, the day's agenda, answered straight from the vault (in English and Portuguese).
+  2. **Haiku** through Claude Code: triage and quick answers.
+  3. **Headless Claude Code**: long tasks (research, summaries, studies) with skills and restricted tools.
+- **Vault** (`vault-template/`): Markdown notes (Obsidian) that act as memory: wiki, tasks, routines, journal and a receipt for every request.
+- **Routines** scheduled by cron (defined in vault notes), push notifications, offline voice (Whisper + Kokoro) and Google Calendar and Gmail connectors.
 
-## Requisitos
+## Requirements
 
-- [uv](https://docs.astral.sh/uv/) (instala o Python 3.12 automaticamente)
+- [uv](https://docs.astral.sh/uv/) (installs Python 3.12 automatically)
 - Node.js 20+
-- Obsidian (para abrir o vault)
-- Claude Code CLI: `npm install -g @anthropic-ai/claude-code` e depois `claude auth login` (usa a assinatura Claude, sem API key)
+- Obsidian (to open the vault)
+- Claude Code CLI: `npm install -g @anthropic-ai/claude-code` and then `claude auth login` (uses your Claude subscription, no API key)
 
-> Se o app do Claude veio da Microsoft Store, instale essas ferramentas **no seu próprio terminal**: o que é instalado de dentro do app fica numa pasta virtual que o resto do Windows não enxerga.
+> If the Claude app came from the Microsoft Store, install these tools **from your own terminal**: whatever is installed from inside the app lives in a virtual folder the rest of Windows can't see.
 
-## Começar
+## Getting started
 
 ```powershell
 powershell -File scripts/start.ps1
 ```
 
-Na primeira execução o script cria o `.env` (com um token aleatório), cria o vault em `vault/` e instala as dependências do HUD. Depois abra:
+On the first run the script creates the `.env` (with a random token), creates the vault in `vault/` and installs the HUD's dependencies. Set `GANDALF_LANGUAGE` in the `.env` to the language you want Gandalf to speak. Then open:
 
 - HUD: http://localhost:5173
 - Bridge: http://127.0.0.1:8787/docs
 
-Voz (opcional, offline): baixe os modelos uma vez com `cd bridge && uv run python -m app.speech.baixar_modelos` (~1,9 GB em `bridge/dados/modelos/`). Depois, segure o botão redondo do HUD para falar com o Gandalf.
+Voice (optional, offline): download the models once with `cd bridge && uv run python -m app.speech.download_models` (~1.9 GB in `bridge/data/models/`). Then hold the HUD's round button to talk to Gandalf.
 
-Uso diário (e acesso pelo celular): `powershell -File scripts/servir.ps1` compila o HUD e o Bridge serve tudo em http://127.0.0.1:8787. Para o celular, veja [docs/CELULAR.md](docs/CELULAR.md) (Tailscale, HTTPS, instalar como app). Conectores do Google: [docs/CONECTORES.md](docs/CONECTORES.md).
+Daily use (and access from the phone): `powershell -File scripts/serve.ps1` builds the HUD and the Bridge serves everything at http://127.0.0.1:8787. For the phone, see [docs/PHONE.md](docs/PHONE.md) (Tailscale, HTTPS, installing as an app). Google connectors: [docs/CONNECTORS.md](docs/CONNECTORS.md).
 
-Para usar o vault no Obsidian: *Open folder as vault* → `vault/`.
+To use the vault in Obsidian: *Open folder as vault* → `vault/`.
 
-## Testes
+### Upgrading a vault from the Portuguese layout
+
+Older versions used Portuguese folder and field names (`vida/tarefas.md`, `recibos/`…). To move an existing vault (and `bridge/dados/`, `.env`) to the current layout:
+
+```bash
+cd bridge && uv run python -m app.migrations.english_layout          # dry run: shows what would change
+cd bridge && uv run python -m app.migrations.english_layout --apply  # applies it
+```
+
+Commit the vault's git before applying, so it can be undone. Run it before the first start of the new version if you can: the start scripts copy the new template into the vault, and the migration only replaces a file that is still an untouched template copy. Any other conflict is listed in the dry run and left for you to merge.
+
+## Tests
 
 ```bash
 cd bridge && uv run pytest

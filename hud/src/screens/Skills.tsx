@@ -11,42 +11,42 @@ import {
 } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router'
-import { Badge, BentoGrid, BentoItem, Button, Card, EmptyState, Modal, Textarea, useToast, type Cor } from '../components/ui'
+import { Badge, BentoGrid, BentoItem, Button, Card, EmptyState, Modal, Textarea, useToast, type Color } from '../components/ui'
 import type { Skill } from '../lib/api'
-import { useExecutarSkill, useSkills } from '../lib/queries'
-import { quandoRelativo } from '../lib/tempo'
+import { useRunSkill, useSkills } from '../lib/queries'
+import { relativeTime } from '../lib/time'
 
-const VISUAL: Record<string, { icone: ReactNode; cor: Cor }> = {
-  'compilar-raw': { icone: <Inbox />, cor: 'musgo' },
-  'resumo-do-dia': { icone: <Sun />, cor: 'ocre' },
-  'sincronizar-agenda': { icone: <CalendarSync />, cor: 'ardosia' },
-  'planejar-semana': { icone: <CalendarRange />, cor: 'madeira' },
-  'preparar-estudos': { icone: <BookOpen />, cor: 'sakura' },
-  'responder-com-vault': { icone: <MessageSquareText />, cor: 'musgo-claro' },
+const LOOK: Record<string, { icon: ReactNode; color: Color }> = {
+  'compile-raw': { icon: <Inbox />, color: 'primary' },
+  'daily-summary': { icon: <Sun />, color: 'gold' },
+  'sync-calendar': { icon: <CalendarSync />, color: 'silver' },
+  'plan-week': { icon: <CalendarRange />, color: 'wood' },
+  'prepare-studies': { icon: <BookOpen />, color: 'violet' },
+  'answer-from-vault': { icon: <MessageSquareText />, color: 'primary-light' },
 }
-const PADRAO = { icone: <Wand2 />, cor: 'musgo' as Cor }
+const DEFAULT = { icon: <Wand2 />, color: 'primary' as Color }
 
-const STATUS_COR: Record<string, Cor> = { ok: 'musgo', erro: 'terracota', cancelada: 'madeira', tempo_esgotado: 'terracota' }
+const STATUS_COLOR: Record<string, Color> = { ok: 'primary', error: 'ember', cancelled: 'wood', timed_out: 'ember' }
 
-function CartaoSkill({ skill, onExecutar }: { skill: Skill; onExecutar: () => void }) {
-  const v = VISUAL[skill.nome] ?? PADRAO
-  const ultima = skill.ultima_execucao
+function SkillCard({ skill, onRun }: { skill: Skill; onRun: () => void }) {
+  const look = LOOK[skill.name] ?? DEFAULT
+  const last = skill.last_run
   return (
-    <Card className="h-full justify-between" titulo={skill.nome} icone={v.icone} cor={v.cor}>
-      <p className="line-clamp-4 text-sm text-tinta-suave">{skill.descricao || 'Sem descrição.'}</p>
+    <Card className="h-full justify-between" title={skill.name} icon={look.icon} color={look.color}>
+      <p className="line-clamp-4 text-sm text-ink-muted">{skill.description || 'No description.'}</p>
       <div className="flex items-center justify-between gap-3">
-        <div className="text-xs text-tinta-suave">
-          {ultima?.quando ? (
+        <div className="text-xs text-ink-muted">
+          {last?.at ? (
             <span className="flex items-center gap-2">
-              <Badge cor={STATUS_COR[ultima.status] ?? 'ardosia'}>{ultima.status}</Badge>
-              {quandoRelativo(ultima.quando)}
+              <Badge color={STATUS_COLOR[last.status] ?? 'silver'}>{last.status}</Badge>
+              {relativeTime(last.at)}
             </span>
           ) : (
-            'nunca executada'
+            'never run'
           )}
         </div>
-        <Button tamanho="sm" onClick={onExecutar}>
-          <Play className="size-3.5" aria-hidden /> Executar
+        <Button size="sm" onClick={onRun}>
+          <Play className="size-3.5" aria-hidden /> Run
         </Button>
       </div>
     </Card>
@@ -55,24 +55,24 @@ function CartaoSkill({ skill, onExecutar }: { skill: Skill; onExecutar: () => vo
 
 export function Skills() {
   const { data: skills = [], isPending, error } = useSkills()
-  const executar = useExecutarSkill()
+  const run = useRunSkill()
   const toast = useToast()
   const navigate = useNavigate()
-  const [escolhida, setEscolhida] = useState<Skill | null>(null)
-  const [instrucao, setInstrucao] = useState('')
+  const [chosen, setChosen] = useState<Skill | null>(null)
+  const [instruction, setInstruction] = useState('')
 
-  function confirmar() {
-    if (!escolhida) return
-    executar.mutate(
-      { nome: escolhida.nome, instrucao },
+  function confirm() {
+    if (!chosen) return
+    run.mutate(
+      { name: chosen.name, instruction },
       {
-        onSuccess: (sessao) => {
-          setEscolhida(null)
-          setInstrucao('')
-          toast('sucesso', `/${escolhida.nome} iniciada`)
-          navigate(`/terminais?sessao=${sessao.id}`)
+        onSuccess: (session) => {
+          setChosen(null)
+          setInstruction('')
+          toast('success', `/${chosen.name} started`)
+          navigate(`/terminals?session=${session.id}`)
         },
-        onError: (err) => toast('erro', err.message),
+        onError: (err) => toast('error', err.message),
       },
     )
   }
@@ -81,51 +81,51 @@ export function Skills() {
     <div className="flex flex-col gap-6">
       <header>
         <h1 className="text-4xl font-semibold tracking-tight">Skills</h1>
-        <p className="mt-1 text-tinta-suave">
-          Receitas do Claude Code em <code className="font-mono text-sm">vault/.claude/skills/</code>. Cada execução abre uma sessão em Terminais.
+        <p className="mt-1 text-ink-muted">
+          Claude Code recipes in <code className="font-mono text-sm">vault/.claude/skills/</code>. Each run opens a session in Terminals.
         </p>
       </header>
       {isPending ? (
-        <p className="text-tinta-suave">carregando…</p>
+        <p className="text-ink-muted">loading…</p>
       ) : error ? (
-        <p role="alert" className="font-semibold text-erro">{error.message}</p>
+        <p role="alert" className="font-semibold text-danger">{error.message}</p>
       ) : skills.length === 0 ? (
-        <EmptyState icone={<Sparkles />} titulo="Nenhuma skill no vault" descricao="Rode o setup do vault para copiar as skills iniciais." />
+        <EmptyState icon={<Sparkles />} title="No skills in the vault" description="Run the vault setup to copy the starter skills." />
       ) : (
         <BentoGrid className="lg:grid-cols-3">
           {skills.map((s) => (
-            <BentoItem key={s.nome}>
-              <CartaoSkill skill={s} onExecutar={() => setEscolhida(s)} />
+            <BentoItem key={s.name}>
+              <SkillCard skill={s} onRun={() => setChosen(s)} />
             </BentoItem>
           ))}
         </BentoGrid>
       )}
 
       <Modal
-        aberto={escolhida !== null}
-        onClose={() => setEscolhida(null)}
-        titulo={`Executar /${escolhida?.nome ?? ''}`}
-        icone={escolhida ? (VISUAL[escolhida.nome] ?? PADRAO).icone : undefined}
-        cor={escolhida ? (VISUAL[escolhida.nome] ?? PADRAO).cor : undefined}
-        rodape={
+        open={chosen !== null}
+        onClose={() => setChosen(null)}
+        title={`Run /${chosen?.name ?? ''}`}
+        icon={chosen ? (LOOK[chosen.name] ?? DEFAULT).icon : undefined}
+        color={chosen ? (LOOK[chosen.name] ?? DEFAULT).color : undefined}
+        footer={
           <>
-            <Button variante="fantasma" onClick={() => setEscolhida(null)}>
-              Cancelar
+            <Button variant="ghost" onClick={() => setChosen(null)}>
+              Cancel
             </Button>
-            <Button onClick={confirmar} disabled={executar.isPending}>
-              <Play className="size-3.5" aria-hidden /> Executar
+            <Button onClick={confirm} disabled={run.isPending}>
+              <Play className="size-3.5" aria-hidden /> Run
             </Button>
           </>
         }
       >
         <div className="flex flex-col gap-3">
-          <p className="text-sm text-tinta-suave">{escolhida?.descricao}</p>
+          <p className="text-sm text-ink-muted">{chosen?.description}</p>
           <Textarea
-            rotulo="Instruções extras (opcional)"
-            placeholder="Ex.: foque em Cálculo II"
-            value={instrucao}
-            onChange={(e) => setInstrucao(e.target.value)}
-            dica="Usa o limite do seu plano Claude Pro."
+            label="Extra instructions (optional)"
+            placeholder="E.g.: focus on Calculus II"
+            value={instruction}
+            onChange={(e) => setInstruction(e.target.value)}
+            hint="Uses your Claude plan's quota."
           />
         </div>
       </Modal>

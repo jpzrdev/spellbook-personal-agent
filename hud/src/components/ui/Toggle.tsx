@@ -1,53 +1,53 @@
 import { Power } from 'lucide-react'
 import { cn } from '../../lib/cn'
-import { foco } from './styles'
+import { focusRing } from './styles'
 
 type Props = {
-  ligado: boolean
-  onChange: (ligado: boolean) => void
-  rotulo: string
-  /** Mostra o rótulo ao lado; sem isso ele vira só aria-label. */
-  mostrarRotulo?: boolean
+  on: boolean
+  onChange: (on: boolean) => void
+  label: string
+  /** Shows the label next to it; otherwise it's only the aria-label. */
+  showLabel?: boolean
   disabled?: boolean
 }
 
-/** Interruptor: trilha cavada e botão em relevo, com "ON/OFF" como na referência. */
-export function Toggle({ ligado, onChange, rotulo, mostrarRotulo = false, disabled }: Props) {
+/** A switch: a sunken track and a raised knob, with "ON/OFF" like in the reference. */
+export function Toggle({ on, onChange, label, showLabel = false, disabled }: Props) {
   return (
     <label className={cn('inline-flex items-center gap-3', disabled ? 'opacity-45' : 'cursor-pointer')}>
       <button
         type="button"
         role="switch"
-        aria-checked={ligado}
-        aria-label={mostrarRotulo ? undefined : rotulo}
+        aria-checked={on}
+        aria-label={showLabel ? undefined : label}
         disabled={disabled}
-        onClick={() => onChange(!ligado)}
+        onClick={() => onChange(!on)}
         className={cn(
-          'relative h-8 w-16 shrink-0 cursor-pointer rounded-pilula shadow-cavado-sm transition-colors duration-150 disabled:cursor-not-allowed',
-          ligado ? 'bg-musgo/20' : 'bg-pergaminho',
-          foco,
+          'relative h-8 w-16 shrink-0 cursor-pointer rounded-pill shadow-sunken-sm transition-colors duration-150 disabled:cursor-not-allowed',
+          on ? 'bg-primary/20' : 'bg-surface',
+          focusRing,
         )}
       >
         <span
           aria-hidden
           className={cn(
             'absolute top-1/2 text-[0.6rem] font-bold tracking-wide -translate-y-1/2',
-            ligado ? 'left-2.5 text-musgo-texto' : 'right-2 text-tinta-suave',
+            on ? 'left-2.5 text-primary-text' : 'right-2 text-ink-muted',
           )}
         >
-          {ligado ? 'ON' : 'OFF'}
+          {on ? 'ON' : 'OFF'}
         </span>
         <span
           aria-hidden
           className={cn(
-            'absolute top-1 left-1 grid size-6 place-items-center rounded-pilula bg-pergaminho shadow-relevo-sm transition-transform duration-150',
-            ligado ? 'translate-x-8 text-musgo-texto' : 'text-tinta-suave',
+            'absolute top-1 left-1 grid size-6 place-items-center rounded-pill bg-surface shadow-raised-sm transition-transform duration-150',
+            on ? 'translate-x-8 text-primary-text' : 'text-ink-muted',
           )}
         >
           <Power className="size-3" strokeWidth={3} />
         </span>
       </button>
-      {mostrarRotulo && <span className="font-medium">{rotulo}</span>}
+      {showLabel && <span className="font-medium">{label}</span>}
     </label>
   )
 }

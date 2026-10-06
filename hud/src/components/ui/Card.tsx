@@ -1,33 +1,33 @@
 import type { HTMLAttributes, ReactNode } from 'react'
 import { cn } from '../../lib/cn'
 import { IconChip } from './IconChip'
-import { relevo, type Cor } from './styles'
+import { raised, type Color } from './styles'
 
-type Props = Omit<HTMLAttributes<HTMLElement>, 'title'> & {
-  titulo?: ReactNode
-  subtitulo?: ReactNode
-  icone?: ReactNode
-  /** Cor do chip de ícone. */
-  cor?: Cor
-  acoes?: ReactNode
+type Props = Omit<HTMLAttributes<HTMLElement>, 'title' | 'color'> & {
+  title?: ReactNode
+  subtitle?: ReactNode
+  icon?: ReactNode
+  /** Color of the icon chip. */
+  color?: Color
+  actions?: ReactNode
 }
 
-/** Card em relevo: chip de ícone, título, subtítulo e ações no canto. */
-export function Card({ titulo, subtitulo, icone, cor, acoes, className, children, ...props }: Props) {
+/** A raised card: icon chip, title, subtitle and actions in the corner. */
+export function Card({ title, subtitle, icon, color, actions, className, children, ...props }: Props) {
   return (
-    <section className={cn(relevo, 'flex flex-col gap-4 rounded-card p-5', className)} {...props}>
-      {(titulo || acoes) && (
+    <section className={cn(raised, 'flex flex-col gap-4 rounded-card p-5', className)} {...props}>
+      {(title || actions) && (
         <header className="flex flex-wrap items-start gap-3">
-          {icone && (
-            <IconChip cor={cor} tamanho="sm">
-              {icone}
+          {icon && (
+            <IconChip color={color} size="sm">
+              {icon}
             </IconChip>
           )}
           <div className="min-w-[8rem] flex-1">
-            <h3 className="text-lg leading-tight font-semibold">{titulo}</h3>
-            {subtitulo && <p className="mt-0.5 text-sm text-tinta-suave">{subtitulo}</p>}
+            <h3 className="text-lg leading-tight font-semibold">{title}</h3>
+            {subtitle && <p className="mt-0.5 text-sm text-ink-muted">{subtitle}</p>}
           </div>
-          {acoes && <div className="ml-auto flex items-center gap-2">{acoes}</div>}
+          {actions && <div className="ml-auto flex items-center gap-2">{actions}</div>}
         </header>
       )}
       {children}

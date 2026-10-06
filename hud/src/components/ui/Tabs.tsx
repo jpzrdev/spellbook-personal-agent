@@ -1,41 +1,41 @@
 import { type KeyboardEvent, type ReactNode } from 'react'
 import { cn } from '../../lib/cn'
-import { PILULA, useIndicador } from './indicador'
-import { cavado, foco } from './styles'
+import { PILL, useIndicator } from './indicator'
+import { focusRing, sunken } from './styles'
 
 export type TabItem = { id: string; label: ReactNode }
 
 type Props = {
-  itens: TabItem[]
-  valor: string
+  items: TabItem[]
+  value: string
   onChange: (id: string) => void
-  rotulo: string
+  label: string
   className?: string
 }
 
-/** Controle segmentado: trilha cavada e uma pílula em relevo que desliza até a aba ativa. Navegável com as setas. */
-export function Tabs({ itens, valor, onChange, rotulo, className }: Props) {
-  const { container, itens: refs, estilo } = useIndicador<HTMLButtonElement>(itens.findIndex((i) => i.id === valor))
+/** Segmented control: a sunken track and a raised pill that slides to the active tab. Arrow-key navigable. */
+export function Tabs({ items, value, onChange, label, className }: Props) {
+  const { container, items: refs, style } = useIndicator<HTMLButtonElement>(items.findIndex((i) => i.id === value))
 
-  function onKeyDown(e: KeyboardEvent, indice: number) {
-    const passo = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0
-    if (!passo) return
+  function onKeyDown(e: KeyboardEvent, index: number) {
+    const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0
+    if (!step) return
     e.preventDefault()
-    const proximo = (indice + passo + itens.length) % itens.length
-    onChange(itens[proximo].id)
-    refs.current[proximo]?.focus()
+    const next = (index + step + items.length) % items.length
+    onChange(items[next].id)
+    refs.current[next]?.focus()
   }
 
   return (
     <div
       ref={container}
       role="tablist"
-      aria-label={rotulo}
-      className={cn(cavado, 'relative inline-flex flex-wrap gap-1 rounded-pilula p-1.5', className)}
+      aria-label={label}
+      className={cn(sunken, 'relative inline-flex flex-wrap gap-1 rounded-pill p-1.5', className)}
     >
-      <span aria-hidden className={PILULA} style={estilo} />
-      {itens.map((item, i) => {
-        const ativo = item.id === valor
+      <span aria-hidden className={PILL} style={style} />
+      {items.map((item, i) => {
+        const active = item.id === value
         return (
           <button
             key={item.id}
@@ -44,14 +44,14 @@ export function Tabs({ itens, valor, onChange, rotulo, className }: Props) {
             }}
             type="button"
             role="tab"
-            aria-selected={ativo}
-            tabIndex={ativo ? 0 : -1}
+            aria-selected={active}
+            tabIndex={active ? 0 : -1}
             onClick={() => onChange(item.id)}
             onKeyDown={(e) => onKeyDown(e, i)}
             className={cn(
-              'relative cursor-pointer rounded-pilula px-4 py-1.5 text-sm font-semibold transition-colors duration-200',
-              foco,
-              ativo ? 'text-musgo-texto' : 'text-tinta-suave hover:text-tinta',
+              'relative cursor-pointer rounded-pill px-4 py-1.5 text-sm font-semibold transition-colors duration-200',
+              focusRing,
+              active ? 'text-primary-text' : 'text-ink-muted hover:text-ink',
             )}
           >
             {item.label}

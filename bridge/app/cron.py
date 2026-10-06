@@ -1,4 +1,4 @@
-"""Expressões cron das rotinas: horários de um dia e descrição em português."""
+"""Cron expressions for routines and reminders: fire times within a day and a readable description."""
 
 import re
 from datetime import date, datetime, time, timedelta
@@ -6,83 +6,106 @@ from zoneinfo import ZoneInfo
 
 from apscheduler.triggers.cron import CronTrigger
 
-DIAS = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"]
-_NOMES_EN = ["sun", "mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+from app import locales
+
+_EN_NAMES = ["sun", "mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+
+_TEXT = {
+    "en": {
+        "every_day": "every day",
+        "weekdays": "Mon–Fri",
+        "weekend": "weekends",
+        "every_hours": "every {step}h (at :{minute:02d})",
+        "every_hours_between": "every {step}h, from {start:02d}:00 to {end:02d}:00",
+        "at": "{days} at {hour:02d}:{minute:02d}",
+    },
+    "pt-BR": {
+        "every_day": "todo dia",
+        "weekdays": "seg–sex",
+        "weekend": "fim de semana",
+        "every_hours": "a cada {step}h (min {minute:02d})",
+        "every_hours_between": "a cada {step}h, das {start:02d}h às {end:02d}h",
+        "at": "{days} às {hour:02d}:{minute:02d}",
+    },
+}
 
 
-def criar_trigger(expr: str, tz: ZoneInfo) -> CronTrigger:
-    """CronTrigger com semântica de cron padrão (0 = domingo).
+def create_trigger(expr: str, tz: ZoneInfo) -> CronTrigger:
+    """CronTrigger with standard cron semantics (0 = Sunday).
 
-    `CronTrigger.from_crontab` do APScheduler 3.x trata o dia da semana numérico com
-    0 = segunda, então '1-5' viraria ter–sáb. Convertemos os números para nomes.
+    APScheduler 3.x's `CronTrigger.from_crontab` treats a numeric day of week with
+    0 = Monday, so '1-5' would become Tue–Sat. We convert the numbers to names.
     """
-    minuto, hora, dia_mes, mes, dia_semana = expr.split()
-    dia_semana = re.sub(r"(?<!/)\b([0-7])\b", lambda m: _NOMES_EN[int(m.group(1))], dia_semana)
+    minute, hour, day_of_month, month, day_of_week = expr.split()
+    day_of_week = re.sub(r"(?<!/)\b([0-7])\b", lambda m: _EN_NAMES[int(m.group(1))], day_of_week)
     return CronTrigger(
-        minute=minuto, hour=hora, day=dia_mes, month=mes, day_of_week=dia_semana, timezone=tz
+        minute=minute, hour=hour, day=day_of_month, month=month, day_of_week=day_of_week, timezone=tz
     )
 
 
-def horarios_no_dia(expr: str, dia: date, tz: ZoneInfo) -> list[datetime]:
-    """Todos os disparos da expressão dentro do dia (no fuso dado)."""
-    trigger = criar_trigger(expr, tz)
-    inicio = datetime.combine(dia, time.min, tz)
-    fim = inicio + timedelta(days=1)
-    disparos: list[datetime] = []
-    anterior = None
-    atual = trigger.get_next_fire_time(None, inicio - timedelta(microseconds=1))
-    while atual and atual < fim:
-        disparos.append(atual)
-        anterior = atual
-        atual = trigger.get_next_fire_time(anterior, atual + timedelta(seconds=1))
-    return disparos
+def times_in_day(expr: str, day: date, tz: ZoneInfo) -> list[datetime]:
+    """Every fire time of the expression within the day (in the given time zone)."""
+    trigger = create_trigger(expr, tz)
+    start = datetime.combine(day, time.min, tz)
+    end = start + timedelta(days=1)
+    fires: list[datetime] = []
+    current = trigger.get_next_fire_time(None, start - timedelta(microseconds=1))
+    while current and current < end:
+        fires.append(current)
+        previous = current
+        current = trigger.get_next_fire_time(previous, current + timedelta(seconds=1))
+    return fires
 
 
-def _dias_semana(campo: str) -> str | None:
-    if campo == "*":
-        return "todo dia"
-    if campo in ("1-5", "mon-fri"):
-        return "seg–sex"
-    if campo in ("0,6", "6,0", "sat,sun"):
-        return "fim de semana"
+def _weekdays(field: str, language: str) -> str | None:
+    text = _TEXT[language]
+    names = locales.get(language).WEEKDAY_SHORT
+    if field == "*":
+        return text["every_day"]
+    if field in ("1-5", "mon-fri"):
+        return text["weekdays"]
+    if field in ("0,6", "6,0", "sat,sun"):
+        return text["weekend"]
     try:
-        if "-" in campo:
-            a, b = (int(x) % 7 for x in campo.split("-"))
-            return f"{DIAS[a]}–{DIAS[b]}"
-        return ", ".join(DIAS[int(x) % 7] for x in campo.split(","))
+        if "-" in field:
+            a, b = (int(x) % 7 for x in field.split("-"))
+            return f"{names[a]}–{names[b]}"
+        return ", ".join(names[int(x) % 7] for x in field.split(","))
     except ValueError:
         return None
 
 
-def descrever(expr: str) -> str:
-    """'50 6 * * 1-5' → 'seg–sex às 06:50'. Cai para a expressão crua se não souber."""
-    partes = expr.split()
-    if len(partes) != 5:
+def describe(expr: str, language: str = "en") -> str:
+    """'50 6 * * 1-5' → 'Mon–Fri at 06:50'. Falls back to the raw expression when unsure."""
+    language = language if language in _TEXT else "en"
+    text = _TEXT[language]
+    parts = expr.split()
+    if len(parts) != 5:
         return expr
-    minuto, hora, dia_mes, mes, dia_semana = partes
-    if dia_mes != "*" or mes != "*":
+    minute, hour, day_of_month, month, day_of_week = parts
+    if day_of_month != "*" or month != "*":
         return expr
-    dias = _dias_semana(dia_semana)
-    sufixo = "" if dias in (None, "todo dia") else f", {dias}"
-    if minuto.isdigit() and hora.startswith("*/"):
-        return f"a cada {hora[2:]}h (min {int(minuto):02d}){sufixo}"
-    if minuto.isdigit() and (m := re.fullmatch(r"(\d+)-(\d+)/(\d+)", hora)):
-        a, b, passo = m.groups()
-        return f"a cada {passo}h, das {int(a):02d}h às {int(b):02d}h{sufixo}"
-    if not (minuto.isdigit() and hora.isdigit()):
+    days = _weekdays(day_of_week, language)
+    suffix = "" if days in (None, text["every_day"]) else f", {days}"
+    if minute.isdigit() and hour.startswith("*/"):
+        return text["every_hours"].format(step=hour[2:], minute=int(minute)) + suffix
+    if minute.isdigit() and (m := re.fullmatch(r"(\d+)-(\d+)/(\d+)", hour)):
+        start, end, step = m.groups()
+        return text["every_hours_between"].format(step=step, start=int(start), end=int(end)) + suffix
+    if not (minute.isdigit() and hour.isdigit()):
         return expr
-    if dias is None:
+    if days is None:
         return expr
-    return f"{dias} às {int(hora):02d}:{int(minuto):02d}"
+    return text["at"].format(days=days, hour=int(hour), minute=int(minute))
 
 
-def ultimo_disparo(expr: str, agora: datetime, tz: ZoneInfo, janela_dias: int = 35) -> datetime | None:
-    """O disparo mais recente até `agora` (o APScheduler só calcula o próximo, então andamos para frente
-    a partir de `agora - janela`). 35 dias cobre rotinas diárias, semanais e mensais."""
-    trigger = criar_trigger(expr, tz)
-    atual = trigger.get_next_fire_time(None, agora - timedelta(days=janela_dias))
-    ultimo = None
-    while atual and atual <= agora:
-        ultimo = atual
-        atual = trigger.get_next_fire_time(atual, atual + timedelta(seconds=1))
-    return ultimo
+def last_fire(expr: str, now: datetime, tz: ZoneInfo, window_days: int = 35) -> datetime | None:
+    """The most recent fire time up to `now` (APScheduler only computes the next one, so we walk forward
+    from `now - window`). 35 days covers daily, weekly and monthly routines."""
+    trigger = create_trigger(expr, tz)
+    current = trigger.get_next_fire_time(None, now - timedelta(days=window_days))
+    last = None
+    while current and current <= now:
+        last = current
+        current = trigger.get_next_fire_time(current, current + timedelta(seconds=1))
+    return last

@@ -1,68 +1,68 @@
 import { useSyncExternalStore } from 'react'
-import type { RespostaGandalf } from './api'
+import type { GandalfReply } from './api'
 
-// Conversa com o Gandalf compartilhada entre a tela Chat e o Orb. Fica no localStorage deste navegador
-// (conveniência por pessoa; o registro oficial de cada pedido são os recibos no vault).
-export type Troca = { id: string; pergunta: string; resposta?: RespostaGandalf; erro?: string; quando: string }
+// The conversation with Gandalf, shared by the Chat screen and the Orb. It lives in this browser's localStorage
+// (a per-person convenience; the official record of each request is the receipts in the vault).
+export type Turn = { id: string; question: string; reply?: GandalfReply; error?: string; at: string }
 
-const CHAVE = 'lifeos-chat'
+const KEY = 'gandalf-chat'
 const MAX = 50
 
-function carregar(): Troca[] {
+function load(): Turn[] {
   try {
-    const bruto = localStorage.getItem(CHAVE)
-    const lista = bruto ? (JSON.parse(bruto) as Troca[]) : []
-    // Pedidos que estavam "pensando" quando a página fechou não vão mais voltar.
-    return lista.map((t) => (t.resposta || t.erro ? t : { ...t, erro: 'interrompido (a página foi recarregada)' }))
+    const raw = localStorage.getItem(KEY)
+    const items = raw ? (JSON.parse(raw) as Turn[]) : []
+    // Requests that were "thinking" when the page closed won't come back.
+    return items.map((t) => (t.reply || t.error ? t : { ...t, error: 'interrupted (the page was reloaded)' }))
   } catch {
     return []
   }
 }
 
-let trocas: Troca[] = carregar()
-const ouvintes = new Set<() => void>()
+let turns: Turn[] = load()
+const listeners = new Set<() => void>()
 
-function salvar() {
+function save() {
   try {
-    localStorage.setItem(CHAVE, JSON.stringify(trocas.slice(-MAX)))
+    localStorage.setItem(KEY, JSON.stringify(turns.slice(-MAX)))
   } catch {
-    // sem persistência
+    // no persistence
   }
-  ouvintes.forEach((f) => f())
+  listeners.forEach((f) => f())
 }
 
 export const chat = {
-  adicionar(pergunta: string): string {
+  add(question: string): string {
     const id = crypto.randomUUID()
-    trocas = [...trocas, { id, pergunta, quando: new Date().toISOString() }].slice(-MAX)
-    salvar()
+    turns = [...turns, { id, question, at: new Date().toISOString() }].slice(-MAX)
+    save()
     return id
   },
-  atualizar(id: string, dados: Partial<Troca>) {
-    trocas = trocas.map((t) => (t.id === id ? { ...t, ...dados } : t))
-    salvar()
+  update(id: string, data: Partial<Turn>) {
+    turns = turns.map((t) => (t.id === id ? { ...t, ...data } : t))
+    save()
   },
-  /** Últimas trocas respondidas nos últimos 10 min: vão junto no /ask para o Tier 2 entender
-   * continuações ("amanhã às 9" depois de o Gandalf perguntar "quando?"). */
-  anteriores(): Array<{ pergunta: string; resposta: string }> {
-    const limite = Date.now() - 10 * 60_000
-    return trocas
-      .filter((t) => t.resposta && t.resposta.tier > 0 && new Date(t.quando).getTime() >= limite)
+  /** The last answered turns of the last 10 min: they go along with /ask so Tier 2 understands
+   * follow-ups ("tomorrow at 9" after Gandalf asked "when?"). */
+  previous(): Array<{ question: string; answer: string }> {
+    const limit = Date.now() - 10 * 60_000
+    return turns
+      .filter((t) => t.reply && t.reply.tier > 0 && new Date(t.at).getTime() >= limit)
       .slice(-2)
-      .map((t) => ({ pergunta: t.pergunta.slice(0, 1000), resposta: t.resposta!.resposta.slice(0, 1500) }))
+      .map((t) => ({ question: t.question.slice(0, 1000), answer: t.reply!.reply.slice(0, 1500) }))
   },
-  limpar() {
-    trocas = []
-    salvar()
+  clear() {
+    turns = []
+    save()
   },
 }
 
-export function useChat(): Troca[] {
+export function useChat(): Turn[] {
   return useSyncExternalStore(
     (f) => {
-      ouvintes.add(f)
-      return () => ouvintes.delete(f)
+      listeners.add(f)
+      return () => listeners.delete(f)
     },
-    () => trocas,
+    () => turns,
   )
 }

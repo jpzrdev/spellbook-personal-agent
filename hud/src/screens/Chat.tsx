@@ -1,6 +1,6 @@
 import { Eraser, Sparkles } from 'lucide-react'
 import { ChatThread } from '../components/ChatThread'
-import { Mascote } from '../components/Mascote'
+import { Mascot } from '../components/Mascot'
 import { Button, Card } from '../components/ui'
 import { chat } from '../lib/chatStore'
 
@@ -10,18 +10,18 @@ export function Chat() {
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-4xl font-semibold tracking-tight">Chat</h1>
-          <p className="mt-1 text-tinta-suave">Converse com o Gandalf. Cada pedido gera um recibo no vault.</p>
+          <p className="mt-1 text-ink-muted">Talk to Gandalf. Every request writes a receipt in the vault.</p>
         </div>
-        <Button variante="fantasma" tamanho="sm" onClick={() => chat.limpar()}>
-          <Eraser className="size-4" aria-hidden /> Limpar conversa
+        <Button variant="ghost" size="sm" onClick={() => chat.clear()}>
+          <Eraser className="size-4" aria-hidden /> Clear conversation
         </Button>
       </header>
       <div className="grid items-start gap-6 lg:grid-cols-[15rem_minmax(0,1fr)]">
         <Card className="items-center lg:sticky lg:top-6">
-          <Mascote />
+          <Mascot />
         </Card>
-        <Card titulo="Gandalf" subtitulo="T1 regras · T2 Claude Code rápido · T3 Claude Code no vault" icone={<Sparkles />} cor="musgo">
-          <ChatThread altura="max-h-[calc(100dvh-22rem)] min-h-64" />
+        <Card title="Gandalf" subtitle="T1 rules · T2 fast Claude Code · T3 Claude Code in the vault" icon={<Sparkles />} color="primary">
+          <ChatThread height="max-h-[calc(100dvh-22rem)] min-h-64" />
         </Card>
       </div>
     </div>

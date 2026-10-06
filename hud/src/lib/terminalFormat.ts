@@ -1,81 +1,81 @@
-import type { EventoSessao } from './api'
+import type { SessionEvent } from './api'
 
-// Converte eventos `stream-json` do Claude Code em linhas de terminal (com cores ANSI).
-const cor = {
+// Turns Claude Code `stream-json` events into terminal lines (with ANSI colors).
+const color = {
   reset: '\x1b[0m',
-  fraco: '\x1b[2m',
-  negrito: '\x1b[1m',
-  musgo: '\x1b[32m',
-  ocre: '\x1b[33m',
-  terracota: '\x1b[31m',
-  ardosia: '\x1b[36m',
+  dim: '\x1b[2m',
+  bold: '\x1b[1m',
+  primary: '\x1b[32m',
+  gold: '\x1b[33m',
+  ember: '\x1b[31m',
+  silver: '\x1b[36m',
 }
 
-type Bloco = { type?: string; text?: string; name?: string; input?: Record<string, unknown>; content?: unknown }
+type Block = { type?: string; text?: string; name?: string; input?: Record<string, unknown>; content?: unknown }
 
-function resumoFerramenta(nome: string, input: Record<string, unknown> = {}): string {
-  const alvo = input.file_path ?? input.path ?? input.pattern ?? input.command ?? input.url ?? ''
-  const texto = String(alvo).replace(/\s+/g, ' ')
-  return texto ? `${nome}(${texto.length > 80 ? texto.slice(0, 77) + '…' : texto})` : nome
+function toolSummary(name: string, input: Record<string, unknown> = {}): string {
+  const target = input.file_path ?? input.path ?? input.pattern ?? input.command ?? input.url ?? ''
+  const text = String(target).replace(/\s+/g, ' ')
+  return text ? `${name}(${text.length > 80 ? text.slice(0, 77) + '…' : text})` : name
 }
 
-function textoResultado(content: unknown): string {
+function resultText(content: unknown): string {
   if (typeof content === 'string') return content
   if (Array.isArray(content)) return content.map((c) => (typeof c === 'string' ? c : (c?.text ?? ''))).join('\n')
   return ''
 }
 
-/** Linhas de terminal para um evento (vazio = não mostra nada). Usa \r\n como o xterm espera. */
-export function formatarEvento(ev: EventoSessao): string[] {
+/** Terminal lines for an event (empty = shows nothing). Uses \r\n as xterm expects. */
+export function formatEvent(ev: SessionEvent): string[] {
   switch (ev.type) {
     case 'system':
       if (ev.subtype === 'init')
-        return [`${cor.fraco}● sessão iniciada${ev.model ? ` · ${ev.model}` : ''}${cor.reset}`]
+        return [`${color.dim}● session started${ev.model ? ` · ${ev.model}` : ''}${color.reset}`]
       return []
     case 'assistant': {
-      const blocos = ((ev.message as { content?: Bloco[] })?.content ?? []) as Bloco[]
-      const linhas: string[] = []
-      for (const b of blocos) {
-        if (b.type === 'text' && b.text?.trim()) linhas.push(...b.text.trim().split('\n'))
+      const blocks = ((ev.message as { content?: Block[] })?.content ?? []) as Block[]
+      const lines: string[] = []
+      for (const b of blocks) {
+        if (b.type === 'text' && b.text?.trim()) lines.push(...b.text.trim().split('\n'))
         if (b.type === 'tool_use')
-          linhas.push(`${cor.ocre}⏺ ${resumoFerramenta(b.name ?? 'ferramenta', b.input)}${cor.reset}`)
+          lines.push(`${color.gold}⏺ ${toolSummary(b.name ?? 'tool', b.input)}${color.reset}`)
       }
-      return linhas
+      return lines
     }
     case 'user': {
-      const blocos = ((ev.message as { content?: Bloco[] })?.content ?? []) as Bloco[]
-      const linhas: string[] = []
-      for (const b of blocos) {
+      const blocks = ((ev.message as { content?: Block[] })?.content ?? []) as Block[]
+      const lines: string[] = []
+      for (const b of blocks) {
         if (b.type !== 'tool_result') continue
-        const texto = textoResultado(b.content).trim()
-        const partes = texto ? texto.split('\n') : ['(sem saída)']
-        const mostrar = partes.slice(0, 3).map((l) => (l.length > 120 ? l.slice(0, 117) + '…' : l))
-        linhas.push(`${cor.fraco}  ⎿ ${mostrar.join('\r\n    ')}${partes.length > 3 ? ` … (+${partes.length - 3} linhas)` : ''}${cor.reset}`)
+        const text = resultText(b.content).trim()
+        const parts = text ? text.split('\n') : ['(no output)']
+        const shown = parts.slice(0, 3).map((l) => (l.length > 120 ? l.slice(0, 117) + '…' : l))
+        lines.push(`${color.dim}  ⎿ ${shown.join('\r\n    ')}${parts.length > 3 ? ` … (+${parts.length - 3} lines)` : ''}${color.reset}`)
       }
-      return linhas
+      return lines
     }
     case 'result': {
-      const segundos = ((Number(ev.duration_ms) || 0) / 1000).toFixed(1)
+      const seconds = ((Number(ev.duration_ms) || 0) / 1000).toFixed(1)
       const ok = !ev.is_error && (ev.subtype === 'success' || ev.subtype === undefined)
       return [
         '',
         ok
-          ? `${cor.musgo}${cor.negrito}✓ concluído em ${segundos}s${cor.reset}`
-          : `${cor.terracota}${cor.negrito}✗ terminou com erro (${String(ev.subtype ?? 'erro')})${cor.reset}`,
+          ? `${color.primary}${color.bold}✓ done in ${seconds}s${color.reset}`
+          : `${color.ember}${color.bold}✗ finished with an error (${String(ev.subtype ?? 'error')})${color.reset}`,
       ]
     }
-    case 'lifeos_texto':
-      return [`${cor.fraco}${String(ev.texto ?? '')}${cor.reset}`]
-    case 'lifeos_fim': {
+    case 'gandalf_text':
+      return [`${color.dim}${String(ev.text ?? '')}${color.reset}`]
+    case 'gandalf_end': {
       const status = String(ev.status)
       if (status === 'ok') return []
       const msg: Record<string, string> = {
-        cancelada: 'sessão cancelada',
-        tempo_esgotado: 'tempo esgotado: sessão encerrada',
-        erro: 'sessão terminou com erro',
+        cancelled: 'session cancelled',
+        timed_out: 'timed out: session ended',
+        error: 'session finished with an error',
       }
-      const erro = (ev.resumo as { erro?: string } | undefined)?.erro
-      return [`${cor.terracota}■ ${msg[status] ?? status}${erro ? `: ${erro}` : ''}${cor.reset}`]
+      const error = (ev.summary as { error?: string } | undefined)?.error
+      return [`${color.ember}■ ${msg[status] ?? status}${error ? `: ${error}` : ''}${color.reset}`]
     }
     default:
       return []

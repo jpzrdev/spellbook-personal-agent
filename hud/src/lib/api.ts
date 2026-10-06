@@ -1,4 +1,4 @@
-// Cliente do Bridge. As chamadas passam pelo proxy /api do Vite.
+// Bridge client. Calls go through Vite's /api proxy.
 export const TOKEN = import.meta.env.BRIDGE_TOKEN as string | undefined
 
 export class BridgeError extends Error {
@@ -10,6 +10,11 @@ export class BridgeError extends Error {
   }
 }
 
+async function errorFrom(resp: Response): Promise<BridgeError> {
+  const body = await resp.json().catch(() => ({}))
+  return new BridgeError(resp.status, typeof body.detail === 'string' ? body.detail : resp.statusText)
+}
+
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const resp = await fetch(`/api${path}`, {
     ...init,
@@ -19,53 +24,39 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
       ...init.headers,
     },
   })
-  if (!resp.ok) {
-    const body = await resp.json().catch(() => ({}))
-    const detalhe = typeof body.detail === 'string' ? body.detail : resp.statusText
-    throw new BridgeError(resp.status, detalhe)
-  }
+  if (!resp.ok) throw await errorFrom(resp)
   if (resp.status === 204) return null as T
   return resp.json() as Promise<T>
 }
 
 export const post = <T>(path: string, body: unknown) => api<T>(path, { method: 'POST', body: JSON.stringify(body) })
-/** Envia arquivo (multipart). Sem Content-Type: o navegador põe o boundary. */
-export async function postArquivo<T>(path: string, campo: string, arquivo: Blob, nome: string): Promise<T> {
+
+/** Uploads a file (multipart). No Content-Type: the browser sets the boundary. */
+export async function postFile<T>(path: string, field: string, file: Blob, name: string): Promise<T> {
   const form = new FormData()
-  form.append(campo, arquivo, nome)
-  const resp = await fetch(`/api${path}`, { method: 'POST', body: form, headers: { Authorization: `Bearer ${TOKEN ?? ''}` } })
-  if (!resp.ok) {
-    const body = await resp.json().catch(() => ({}))
-    throw new BridgeError(resp.status, typeof body.detail === 'string' ? body.detail : resp.statusText)
-  }
-  return resp.json() as Promise<T>
+  form.append(field, file, name)
+  return postForm<T>(path, form)
 }
 
-/** Formulário multipart com vários campos/arquivos. */
+/** Multipart form with several fields/files. */
 export async function postForm<T>(path: string, form: FormData): Promise<T> {
   const resp = await fetch(`/api${path}`, { method: 'POST', body: form, headers: { Authorization: `Bearer ${TOKEN ?? ''}` } })
-  if (!resp.ok) {
-    const body = await resp.json().catch(() => ({}))
-    throw new BridgeError(resp.status, typeof body.detail === 'string' ? body.detail : resp.statusText)
-  }
+  if (!resp.ok) throw await errorFrom(resp)
   return resp.json() as Promise<T>
 }
 
-/** Pede um áudio (WAV) da fala do Gandalf. */
-export async function buscarFala(texto: string): Promise<Blob> {
-  const resp = await fetch('/api/voz/falar', {
+/** Asks for an audio clip (WAV) of Gandalf speaking. */
+export async function fetchSpeech(text: string): Promise<Blob> {
+  const resp = await fetch('/api/voice/speak', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN ?? ''}` },
-    body: JSON.stringify({ texto }),
+    body: JSON.stringify({ text }),
   })
-  if (!resp.ok) {
-    const body = await resp.json().catch(() => ({}))
-    throw new BridgeError(resp.status, typeof body.detail === 'string' ? body.detail : resp.statusText)
-  }
+  if (!resp.ok) throw await errorFrom(resp)
   return resp.blob()
 }
 
-export type VozStatus = { stt: boolean; tts: boolean; whisper_modelo: string; voz: string }
+export type VoiceStatus = { stt: boolean; tts: boolean; whisper_model: string; voice: string; language: string }
 
 export const del = <T>(path: string) => api<T>(path, { method: 'DELETE' })
 export const put = <T>(path: string, body: unknown) => api<T>(path, { method: 'PUT', body: JSON.stringify(body) })
@@ -73,291 +64,293 @@ export const patch = <T>(path: string, body: unknown) => api<T>(path, { method: 
 
 export type Health = {
   status: string
-  versao: string
+  version: string
   vault: string
-  vault_existe: boolean
-  claude?: { instalado: boolean; logado: boolean; metodo: string | null }
+  vault_exists: boolean
+  /** The assistant's language (what Gandalf speaks and writes). The HUD is always in English. */
+  language: string
+  claude?: { installed: boolean; logged_in: boolean; method: string | null }
 }
 
-export type Prioridade = 'maxima' | 'alta' | 'media' | 'baixa' | 'minima'
+export type Priority = 'highest' | 'high' | 'medium' | 'low' | 'lowest'
 
-export type Tarefa = {
+export type Task = {
   id: string
-  texto: string
-  concluida: boolean
-  vence: string | null
-  concluida_em: string | null
-  prioridade: Prioridade | null
+  text: string
+  done: boolean
+  due: string | null
+  done_on: string | null
+  priority: Priority | null
   tags: string[]
 }
 
-export type Evento = {
-  inicio: string | null
-  fim: string | null
-  titulo: string
-  local: string | null
+export type AgendaEvent = {
+  start: string | null
+  end: string | null
+  title: string
+  location: string | null
 }
 
-export type RotinaDoDia = {
+export type RoutineToday = {
   slug: string
-  nome: string
-  horario: string
-  quando: string
-  status: 'pendente' | 'passou' | 'fila' | 'rodando' | 'ok' | 'erro' | 'cancelada' | 'tempo_esgotado'
-  recibo_id?: string
-  sessao_id?: string
+  name: string
+  time: string
+  schedule: string
+  status: 'pending' | 'missed' | 'queued' | 'running' | 'ok' | 'error' | 'cancelled' | 'timed_out'
+  receipt_id?: string
+  session_id?: string
 }
 
-export type Hoje = {
-  data: string
-  data_extenso: string
-  agora: string
-  agenda: Evento[]
-  prioridades: Tarefa[]
-  tarefas: { abertas: number; hoje: number; atrasadas: number; concluidas_hoje: number }
-  rotinas: RotinaDoDia[]
+export type Today = {
+  date: string
+  date_long: string
+  now: string
+  agenda: AgendaEvent[]
+  priorities: Task[]
+  tasks: { open: number; today: number; overdue: number; done_today: number }
+  routines: RoutineToday[]
 }
 
-export type RespostaGandalf = {
+export type GandalfReply = {
   id: string | null
-  /** 0 = não executou (precisa confirmar o limite diário) */
+  /** 0 = didn't run (needs to confirm the daily limit) */
   tier: 0 | 1 | 2 | 3
   intent: string | null
-  entendeu: boolean
-  resposta: string
-  duracao_ms: number
-  dados: Record<string, unknown>
-  sessao_id: string | null
-  precisa_confirmar: boolean
+  understood: boolean
+  reply: string
+  duration_ms: number
+  data: Record<string, unknown>
+  session_id: string | null
+  needs_confirmation: boolean
 }
 
-export type StatusSessao = 'fila' | 'rodando' | 'ok' | 'erro' | 'cancelada' | 'tempo_esgotado'
+export type SessionStatus = 'queued' | 'running' | 'ok' | 'error' | 'cancelled' | 'timed_out'
 
-export type Sessao = {
+export type Session = {
   id: string
-  tarefa: string
-  pedido: string
-  origem: string
+  task: string
+  request: string
+  source: string
   skill: string | null
-  rotina: string | null
-  saida: 'vault' | 'efemera'
-  efemero_id: string | null
-  status: StatusSessao
+  routine: string | null
+  output: 'vault' | 'ephemeral' | 'action' | 'research' | 'library'
+  ephemeral_id: string | null
+  status: SessionStatus
   claude_session_id: string | null
-  retomada_de: string | null
-  criada: string
-  iniciada: string | null
-  terminada: string | null
-  resultado: string
-  erro: string | null
-  arquivos: string[]
-  modelo: string | null
-  tokens_entrada: number
-  tokens_saida: number
-  custo_usd: number
-  recibo_id: string | null
-  num_eventos: number
+  resumed_from: string | null
+  created: string
+  started: string | null
+  finished: string | null
+  result: string
+  error: string | null
+  files: string[]
+  model: string | null
+  input_tokens: number
+  output_tokens: number
+  cost_usd: number
+  receipt_id: string | null
+  event_count: number
 }
 
-/** Evento do stream de uma sessão: eventos do Claude Code (stream-json) ou do Gandalf (lifeos_*). */
-export type EventoSessao = { type: string; [k: string]: unknown }
+/** An event of a session's stream: Claude Code events (stream-json) or Gandalf's own (gandalf_*). */
+export type SessionEvent = { type: string; [k: string]: unknown }
 
-export const sessaoAtiva = (s: Pick<Sessao, 'status'>) => s.status === 'fila' || s.status === 'rodando'
+export const isSessionActive = (s: Pick<Session, 'status'>) => s.status === 'queued' || s.status === 'running'
 
-export type Execucao = {
-  quando: string
+export type Run = {
+  at: string
   status: string
   tier?: number
-  recibo_id?: string
-  sessao_id?: string
+  receipt_id?: string
+  session_id?: string
 }
 
-export type Rotina = {
+export type Routine = {
   slug: string
-  nome: string
+  name: string
   cron: string
-  quando: string
-  ativa: boolean
+  schedule: string
+  active: boolean
   tier: 1 | 3
   skill: string | null
-  acao: string | null
-  descricao: string
-  saida: 'vault' | 'efemera'
-  /** Push no celular quando terminar bem (falhas sempre avisam). */
-  notificar: boolean
-  proxima: string | null
-  historico: Execucao[]
+  action: string | null
+  description: string
+  output: 'vault' | 'ephemeral'
+  /** Phone push when it finishes fine (failures always notify). */
+  notify: boolean
+  next: string | null
+  history: Run[]
 }
 
-export type AcaoInterna = { nome: string; descricao: string }
+export type InternalAction = { name: string; description: string }
 
 export type Skill = {
-  nome: string
-  descricao: string
-  pasta: string
-  ultima_execucao: (Execucao & { id: string; arquivo: string }) | null
+  name: string
+  description: string
+  folder: string
+  last_run: (Run & { id: string; file: string }) | null
 }
 
-/** Resultado de passagem (ex.: resumo de e-mails): fica fora do vault e expira. */
-export type Efemero = {
+/** A passing result (e.g. an email summary): it stays outside the vault and expires. */
+export type Ephemeral = {
   id: string
-  titulo: string
-  texto: string
-  quando: string
-  expira: string
-  origem: string
-  rotina: string | null
-  sessao_id: string | null
-  /** Resultado de pesquisa web (ainda não guardado): "Guardar no vault" organiza na Biblioteca. */
-  pesquisa?: { tema: string; tipo: 'pesquisa' | 'plano'; pedido: string; slug: string | null } | null
+  title: string
+  text: string
+  created: string
+  expires: string
+  source: string
+  routine: string | null
+  session_id: string | null
+  /** Web research result (not saved yet): "Save to vault" organizes it in the Library. */
+  research?: { topic: string; kind: 'research' | 'plan'; request: string; slug: string | null } | null
 }
 
-/** Tema guardado na Biblioteca (wiki/biblioteca/<slug>/). */
-export type TemaBiblioteca = { slug: string; titulo: string; tipo: 'pesquisa' | 'plano'; resumo: string; atualizado: string | null; partes: number }
+/** A topic saved in the Library (wiki/library/<slug>/). */
+export type LibraryTopic = { slug: string; title: string; kind: 'research' | 'plan'; summary: string; updated: string | null; part_count: number }
 
-export type TemaBibliotecaDetalhe = TemaBiblioteca & {
-  indice: string | null
-  lista_partes: Array<{ nota: string; titulo: string; ordem: number | null }>
-  tem_checklist: boolean
+export type LibraryTopicDetail = LibraryTopic & {
+  index: string | null
+  parts: Array<{ note: string; title: string; order: number | null }>
+  has_checklist: boolean
 }
 
-/** Matéria de estudo: o acervo pessoal de wiki/estudos/<materia>/ (tópicos, anotações e material). */
-export type Materia = {
-  materia: string
-  titulo: string
-  topicos_total: number
-  anotacoes_total: number
-  fontes_total: number
-  /** Títulos dos primeiros tópicos (para o cartão da lista). */
-  titulos: string[]
+/** A study subject: the personal collection in wiki/studies/<subject>/ (topics, annotations and material). */
+export type Subject = {
+  subject: string
+  title: string
+  topic_count: number
+  annotation_count: number
+  source_count: number
+  /** Titles of the first topics (for the list card). */
+  titles: string[]
 }
 
-export type Topico = {
-  nota: string
-  titulo: string
-  ordem: number | null
-  /** Primeiro parágrafo da nota. */
-  resumo: string
-  palavras: number
-  /** Quantas anotações do usuário este tópico tem. */
-  anotacoes?: number
+export type Topic = {
+  note: string
+  title: string
+  order: number | null
+  /** The note's first paragraph. */
+  summary: string
+  words: number
+  /** How many of the user's annotations this topic has. */
+  annotation_count?: number
 }
 
-/** Anotação do usuário (wiki/estudos/<materia>/_anotacoes/): de um tópico ou geral (topico vazio). */
-export type Anotacao = {
-  arquivo: string
-  titulo: string | null
-  texto: string
-  topico: string | null
-  /** 'quiz' = questão salva de um quiz. */
-  origem: 'quiz' | null
-  criado: string
-  atualizado: string
+/** The user's annotation (wiki/studies/<subject>/_annotations/): on a topic or general (empty topic). */
+export type Annotation = {
+  file: string
+  title: string | null
+  text: string
+  topic: string | null
+  /** 'quiz' = a question saved from a quiz. */
+  source: 'quiz' | null
+  created: string
+  updated: string
 }
 
-/** Material enviado para a matéria (wiki/estudos/<materia>/_fontes/). */
-export type Fonte = { arquivo: string; nome: string; tamanho: number }
+/** Material uploaded for the subject (wiki/studies/<subject>/_sources/). */
+export type Source = { file: string; name: string; size: number }
 
-export type MateriaDetalhe = Materia & { indice: string; topicos: Topico[]; anotacoes: Anotacao[]; fontes: Fonte[] }
+export type SubjectDetail = Subject & { index: string; topics: Topic[]; annotations: Annotation[]; sources: Source[] }
 
-export type TipoQuiz = 'multipla' | 'texto'
-export const MAX_PERGUNTAS_QUIZ = 15
+export type QuizType = 'multiple' | 'text'
+export const MAX_QUIZ_QUESTIONS = 15
 
-/** Pergunta de um quiz efêmero (não fica salvo em lugar nenhum). */
-export type PerguntaQuiz = {
-  pergunta: string
-  resposta: string
-  explicacao: string
-  /** Nota do tópico de onde a pergunta saiu. */
-  topico: string | null
-  titulo_topico: string | null
-  /** Só na múltipla escolha. */
-  opcoes: string[] | null
-  correta: number | null
+/** A question of an ephemeral quiz (not saved anywhere). */
+export type QuizQuestion = {
+  question: string
+  answer: string
+  explanation: string
+  /** Note of the topic the question came from. */
+  topic: string | null
+  topic_title: string | null
+  /** Multiple choice only. */
+  options: string[] | null
+  correct: number | null
 }
 
-export type Quiz = { tipo: TipoQuiz; topico: string | null; perguntas: PerguntaQuiz[] }
+export type Quiz = { type: QuizType; topic: string | null; questions: QuizQuestion[] }
 
-export type Veredito = 'certo' | 'parcial' | 'errado'
+export type Verdict = 'correct' | 'partial' | 'wrong'
 
-export type CorrecaoQuiz = { veredito: Veredito; comentario: string; complemento: string }
+export type QuizGrade = { verdict: Verdict; comment: string; detail: string }
 
-export type Recibo = {
+export type Receipt = {
   id: string
-  quando: string | null
+  at: string | null
   tier: number
-  origem: string
+  source: string
   intent: string | null
-  rotina: string | null
+  routine: string | null
   status: string
-  modelo: string | null
-  tokens_entrada: number
-  tokens_saida: number
-  custo_estimado_usd: number
-  duracao_ms: number
-  arquivo: string
-  pedido: string
+  model: string | null
+  input_tokens: number
+  output_tokens: number
+  estimated_cost_usd: number
+  duration_ms: number
+  file: string
+  request: string
 }
 
-export type Nota = {
-  caminho: string
-  texto: string | null
-  metadados: Record<string, unknown>
-  binario: boolean
-  tamanho: number
+export type VaultNote = {
+  path: string
+  text: string | null
+  metadata: Record<string, unknown>
+  binary: boolean
+  size: number
 }
 
-export type CustoDia = {
-  dia: string
-  chamadas: Record<'1' | '2' | '3', number>
-  tokens_entrada: number
-  tokens_saida: number
-  custo_estimado_usd: number
+export type DayCost = {
+  day: string
+  calls: Record<'1' | '2' | '3', number>
+  input_tokens: number
+  output_tokens: number
+  estimated_cost_usd: number
 }
 
-export type TotalCustos = { chamadas: Record<'1' | '2' | '3', number>; tokens: number; custo_estimado_usd: number }
+export type CostTotals = { calls: Record<'1' | '2' | '3', number>; tokens: number; estimated_cost_usd: number }
 
-export type Custos = {
-  /** Hoje no fuso do Bridge (America/Sao_Paulo). */
-  data: string
-  por_dia: CustoDia[]
-  periodo: TotalCustos
-  mes: TotalCustos
-  hoje: TotalCustos
-  limite_diario_chamadas: number
+export type Costs = {
+  /** Today in the Bridge's time zone. */
+  date: string
+  by_day: DayCost[]
+  period: CostTotals
+  month: CostTotals
+  today: CostTotals
+  daily_call_limit: number
 }
 
-export type NoArvore = { nome: string; caminho: string; tipo: 'pasta' | 'arquivo'; tamanho?: number; filhos?: NoArvore[] }
+export type TreeNode = { name: string; path: string; type: 'folder' | 'file'; size?: number; children?: TreeNode[] }
 
-/** Lembrete do Gandalf (vida/lembretes.md): único (`quando`) ou recorrente (`recorrencia`, cron). */
-export type Lembrete = {
+/** Gandalf's reminder (life/reminders.md): one-off (`when`) or recurring (`recurrence`, cron). */
+export type Reminder = {
   id: string
-  texto: string
-  concluido: boolean
-  quando: string | null
-  recorrencia: string | null
-  recorrencia_texto: string | null
-  concluido_em: string | null
-  proximo: string | null
-  /** Avisado há pouco (até 2 h): o HUD oferece adiar. */
-  avisado_recente?: boolean
+  text: string
+  done: boolean
+  when: string | null
+  recurrence: string | null
+  recurrence_text: string | null
+  done_at: string | null
+  next: string | null
+  /** Fired a moment ago (up to 2 h): the HUD offers to snooze. */
+  recently_fired?: boolean
 }
 
-export type Repetir = 'anual' | 'mensal' | 'semanal' | 'diaria'
+export type Repeat = 'yearly' | 'monthly' | 'weekly' | 'daily'
 
-/** Evento proposto pelo Gandalf para o Google Agenda; só é criado depois de confirmado. */
-export type EventoProposto = {
-  titulo: string
-  data: string
-  dia_inteiro: boolean
-  hora_inicio: string | null
-  hora_fim: string | null
-  repetir: Repetir | null
-  avisos_min: number[]
-  local: string | null
-  descricao: string | null
+/** An event Gandalf proposes for Google Calendar; it's only created after it's confirmed. */
+export type ProposedEvent = {
+  title: string
+  date: string
+  all_day: boolean
+  start_time: string | null
+  end_time: string | null
+  repeat: Repeat | null
+  reminders_min: number[]
+  location: string | null
+  description: string | null
 }
 
-export type PropostaResumo = { id: string; evento: EventoProposto; status: 'pendente' | 'confirmada' | 'descartada'; sessao_id?: string | null }
+export type ProposalSummary = { id: string; event: ProposedEvent; status: 'pending' | 'confirmed' | 'discarded'; session_id?: string | null }
 
-export type AparelhoPush = { aparelho: string; desde: string; endpoint: string }
+export type PushDevice = { device: string; since: string; endpoint: string }

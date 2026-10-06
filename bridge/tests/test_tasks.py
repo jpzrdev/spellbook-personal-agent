@@ -1,47 +1,47 @@
 from datetime import date
 
-from app.vault.tasks import format_task, ordenar_prioridades, parse_tasks, set_concluida
+from app.vault.tasks import format_task, parse_tasks, set_done, sort_by_priority
 
-HOJE = date(2026, 10, 3)
-
-
-def test_parse_campos():
-    [t] = parse_tasks("- [ ] Lista 3 de cálculo 📅 2026-10-06 ⏫ #estudos/calculo")
-    assert t.texto == "Lista 3 de cálculo"
-    assert t.vence == date(2026, 10, 6)
-    assert t.prioridade == "alta"
-    assert t.tags == ["estudos/calculo"]
-    assert not t.concluida
+TODAY = date(2026, 10, 3)
 
 
-def test_parse_concluida_e_crlf():
-    [t] = parse_tasks("# T\r\n- [x] Comprar café ✅ 2026-10-02\r\n")
-    assert t.concluida and t.concluida_em == date(2026, 10, 2)
-    assert t.texto == "Comprar café"
-    assert t.linha == 1
+def test_parse_fields():
+    [x] = parse_tasks("- [ ] Calculus problem set 3 📅 2026-10-06 ⏫ #studies/calculus")
+    assert x.text == "Calculus problem set 3"
+    assert x.due == date(2026, 10, 6)
+    assert x.priority == "high"
+    assert x.tags == ["studies/calculus"]
+    assert not x.done
 
 
-def test_id_estavel_ao_concluir_e_unico_para_duplicadas():
-    antes = parse_tasks("- [ ] Ler\n- [ ] Ler")
-    assert antes[0].id != antes[1].id
-    linha = set_concluida("- [ ] Ler", True, HOJE)
-    assert linha == "- [x] Ler ✅ 2026-10-03"
-    assert parse_tasks(linha)[0].id == antes[0].id
-    assert set_concluida(linha, False, HOJE) == "- [ ] Ler"
+def test_parse_done_and_crlf():
+    [x] = parse_tasks("# T\r\n- [x] Buy coffee ✅ 2026-10-02\r\n")
+    assert x.done and x.done_on == date(2026, 10, 2)
+    assert x.text == "Buy coffee"
+    assert x.line == 1
 
 
-def test_format_task_ida_e_volta():
-    linha = format_task("Pagar luz", vence=date(2026, 10, 5), prioridade="alta", tags=["pessoal"])
-    assert linha == "- [ ] Pagar luz 📅 2026-10-05 ⏫ #pessoal"
-    [t] = parse_tasks(linha)
-    assert (t.texto, t.prioridade, t.tags) == ("Pagar luz", "alta", ["pessoal"])
+def test_id_stable_when_done_and_unique_for_duplicates():
+    before = parse_tasks("- [ ] Read\n- [ ] Read")
+    assert before[0].id != before[1].id
+    line = set_done("- [ ] Read", True, TODAY)
+    assert line == "- [x] Read ✅ 2026-10-03"
+    assert parse_tasks(line)[0].id == before[0].id
+    assert set_done(line, False, TODAY) == "- [ ] Read"
 
 
-def test_ordem_de_prioridades(vault):
-    from app.vault.reader import ler_tarefas
+def test_format_task_round_trip():
+    line = format_task("Pay electricity", due=date(2026, 10, 5), priority="high", tags=["personal"])
+    assert line == "- [ ] Pay electricity 📅 2026-10-05 ⏫ #personal"
+    [x] = parse_tasks(line)
+    assert (x.text, x.priority, x.tags) == ("Pay electricity", "high", ["personal"])
 
-    ordem = [t.texto for t in ordenar_prioridades(ler_tarefas(vault), HOJE)]
-    # Atrasada/hoje primeiro (por prioridade), depois o resto por prioridade e data.
-    assert ordem[:2] == ["Revisar limites", "Renovar livro da biblioteca"]
-    assert ordem[2] == "Lista 3 de cálculo"
-    assert "Comprar café" not in ordem
+
+def test_priority_order(vault):
+    from app.vault.reader import read_tasks
+
+    order = [x.text for x in sort_by_priority(read_tasks(vault), TODAY)]
+    # Overdue/today first (by priority), then the rest by priority and date.
+    assert order[:2] == ["Review limits", "Renew library book"]
+    assert order[2] == "Calculus problem set 3"
+    assert "Buy coffee" not in order

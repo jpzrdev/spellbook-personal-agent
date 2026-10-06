@@ -1,205 +1,235 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { api, del, patch, post, postForm, put, type Anotacao, type TemaBiblioteca, type TemaBibliotecaDetalhe, type AcaoInterna, type AparelhoPush, type Custos, type Efemero, type EventoProposto, type Lembrete, type PropostaResumo, type Materia, type MateriaDetalhe, type Quiz, type CorrecaoQuiz, type TipoQuiz, type NoArvore, type Nota, type Recibo, type Hoje, type RespostaGandalf, type Rotina, type Sessao, type Skill, type Tarefa } from './api'
+import {
+  api,
+  del,
+  patch,
+  post,
+  postForm,
+  put,
+  type Annotation,
+  type Costs,
+  type Ephemeral,
+  type GandalfReply,
+  type InternalAction,
+  type LibraryTopic,
+  type LibraryTopicDetail,
+  type ProposalSummary,
+  type ProposedEvent,
+  type PushDevice,
+  type Quiz,
+  type QuizGrade,
+  type QuizType,
+  type Receipt,
+  type Reminder,
+  type Routine,
+  type Session,
+  type Skill,
+  type Subject,
+  type SubjectDetail,
+  type Task,
+  type Today,
+  type TreeNode,
+  type VaultNote,
+} from './api'
 import { chat } from './chatStore'
 
-// Releitura periódica + ao focar a janela: edições feitas no Obsidian aparecem sozinhas.
-export function useHoje() {
-  return useQuery({ queryKey: ['hoje'], queryFn: () => api<Hoje>('/hoje'), refetchInterval: 30_000 })
+// Periodic refetch + on window focus: edits made in Obsidian show up by themselves.
+export function useToday() {
+  return useQuery({ queryKey: ['today'], queryFn: () => api<Today>('/today'), refetchInterval: 30_000 })
 }
 
-export function useTarefas() {
-  return useQuery({ queryKey: ['tarefas'], queryFn: () => api<Tarefa[]>('/tarefas?incluir_concluidas=true'), refetchInterval: 30_000 })
+export function useTasks() {
+  return useQuery({ queryKey: ['tasks'], queryFn: () => api<Task[]>('/tasks?include_done=true'), refetchInterval: 30_000 })
 }
 
-function useInvalidarTarefas() {
+function useInvalidateTasks() {
   const qc = useQueryClient()
-  return () => Promise.all([qc.invalidateQueries({ queryKey: ['tarefas'] }), qc.invalidateQueries({ queryKey: ['hoje'] })])
+  return () => Promise.all([qc.invalidateQueries({ queryKey: ['tasks'] }), qc.invalidateQueries({ queryKey: ['today'] })])
 }
 
-export function useConcluirTarefa() {
+export function useCompleteTask() {
   const qc = useQueryClient()
-  const invalidar = useInvalidarTarefas()
+  const invalidate = useInvalidateTasks()
   return useMutation({
-    mutationFn: ({ id, concluida }: { id: string; concluida: boolean }) =>
-      patch<Tarefa>(`/tarefas/${id}`, { concluida }),
-    // Atualização otimista: o check aparece na hora; se falhar, volta.
-    onMutate: async ({ id, concluida }) => {
-      await Promise.all([qc.cancelQueries({ queryKey: ['tarefas'] }), qc.cancelQueries({ queryKey: ['hoje'] })])
-      const anterior = { tarefas: qc.getQueryData<Tarefa[]>(['tarefas']), hoje: qc.getQueryData<Hoje>(['hoje']) }
-      const marcar = (t: Tarefa) => (t.id === id ? { ...t, concluida } : t)
-      qc.setQueryData<Tarefa[]>(['tarefas'], (lista) => lista?.map(marcar))
-      qc.setQueryData<Hoje>(['hoje'], (h) => h && { ...h, prioridades: h.prioridades.map(marcar) })
-      return { anterior }
+    mutationFn: ({ id, done }: { id: string; done: boolean }) => patch<Task>(`/tasks/${id}`, { done }),
+    // Optimistic update: the check shows up right away; if it fails, it rolls back.
+    onMutate: async ({ id, done }) => {
+      await Promise.all([qc.cancelQueries({ queryKey: ['tasks'] }), qc.cancelQueries({ queryKey: ['today'] })])
+      const previous = { tasks: qc.getQueryData<Task[]>(['tasks']), today: qc.getQueryData<Today>(['today']) }
+      const mark = (x: Task) => (x.id === id ? { ...x, done } : x)
+      qc.setQueryData<Task[]>(['tasks'], (items) => items?.map(mark))
+      qc.setQueryData<Today>(['today'], (t) => t && { ...t, priorities: t.priorities.map(mark) })
+      return { previous }
     },
     onError: (_e, _v, ctx) => {
-      qc.setQueryData(['tarefas'], ctx?.anterior.tarefas)
-      qc.setQueryData(['hoje'], ctx?.anterior.hoje)
+      qc.setQueryData(['tasks'], ctx?.previous.tasks)
+      qc.setQueryData(['today'], ctx?.previous.today)
     },
-    onSettled: invalidar,
+    onSettled: invalidate,
   })
 }
 
-export function useCriarTarefa() {
-  const invalidar = useInvalidarTarefas()
+export function useCreateTask() {
+  const invalidate = useInvalidateTasks()
   return useMutation({
-    mutationFn: (nova: { texto: string; vence?: string | null }) => post<Tarefa>('/tarefas', nova),
-    onSuccess: invalidar,
+    mutationFn: (task: { text: string; due?: string | null }) => post<Task>('/tasks', task),
+    onSuccess: invalidate,
   })
 }
 
-export function useCapturar() {
-  return useMutation({ mutationFn: (texto: string) => post<{ arquivo: string }>('/raw', { texto }) })
+export function useCapture() {
+  return useMutation({ mutationFn: (text: string) => post<{ file: string }>('/raw', { text }) })
 }
 
-export function usePerguntar() {
+export function useAsk() {
   const qc = useQueryClient()
-  const invalidar = useInvalidarTarefas()
+  const invalidate = useInvalidateTasks()
   return useMutation({
-    mutationKey: ['perguntar'],
+    mutationKey: ['ask'],
     mutationFn: ({
-      texto,
-      confirmar = false,
-      forcarTier,
-      origem = 'hud',
-      nota,
+      text,
+      confirm = false,
+      forceTier,
+      source = 'hud',
+      note,
     }: {
-      texto: string
-      confirmar?: boolean
-      forcarTier?: 1 | 2 | 3
-      origem?: 'hud' | 'voz'
-      /** Nota de estudo aberta: vai como contexto ("pergunte sobre este tópico"). */
-      nota?: string
-    }) => post<RespostaGandalf>('/ask', { texto, origem, confirmar, forcar_tier: forcarTier ?? null, anterior: chat.anteriores(), nota: nota ?? null }),
-    // Um pedido pode ter criado tarefa, anotação ou sessão.
-    onSuccess: () => Promise.all([invalidar(), qc.invalidateQueries({ queryKey: ['sessoes'] })]),
+      text: string
+      confirm?: boolean
+      forceTier?: 1 | 2 | 3
+      source?: 'hud' | 'voice'
+      /** Open study note: goes as context ("ask about this topic"). */
+      note?: string
+    }) => post<GandalfReply>('/ask', { text, source, confirm, force_tier: forceTier ?? null, previous: chat.previous(), note: note ?? null }),
+    // A request may have created a task, a note or a session.
+    onSuccess: () => Promise.all([invalidate(), qc.invalidateQueries({ queryKey: ['sessions'] })]),
   })
 }
 
-export function useSessoes() {
-  return useQuery({ queryKey: ['sessoes'], queryFn: () => api<Sessao[]>('/sessoes'), refetchInterval: 15_000 })
+export function useSessions() {
+  return useQuery({ queryKey: ['sessions'], queryFn: () => api<Session[]>('/sessions'), refetchInterval: 15_000 })
 }
 
-export function useCancelarSessao() {
+export function useCancelSession() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (id: string) => del<Sessao>(`/sessoes/${id}`),
-    onSettled: () => qc.invalidateQueries({ queryKey: ['sessoes'] }),
+    mutationFn: (id: string) => del<Session>(`/sessions/${id}`),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['sessions'] }),
   })
 }
 
-export function useContinuarSessao() {
+export function useContinueSession() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, texto }: { id: string; texto: string }) => post<Sessao>(`/sessoes/${id}/continuar`, { texto }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['sessoes'] }),
+    mutationFn: ({ id, text }: { id: string; text: string }) => post<Session>(`/sessions/${id}/continue`, { text }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['sessions'] }),
   })
 }
 
-// ---------- Skills e rotinas ----------
+// ---------- Skills and routines ----------
 
 export function useSkills() {
   return useQuery({ queryKey: ['skills'], queryFn: () => api<Skill[]>('/skills') })
 }
 
-export function useExecutarSkill() {
+export function useRunSkill() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ nome, instrucao }: { nome: string; instrucao: string }) =>
-      post<Sessao>(`/skills/${encodeURIComponent(nome)}/executar`, { instrucao }),
-    onSuccess: () => Promise.all([qc.invalidateQueries({ queryKey: ['sessoes'] }), qc.invalidateQueries({ queryKey: ['skills'] })]),
+    mutationFn: ({ name, instruction }: { name: string; instruction: string }) =>
+      post<Session>(`/skills/${encodeURIComponent(name)}/run`, { instruction }),
+    onSuccess: () => Promise.all([qc.invalidateQueries({ queryKey: ['sessions'] }), qc.invalidateQueries({ queryKey: ['skills'] })]),
   })
 }
 
-export function useRotinas() {
-  return useQuery({ queryKey: ['rotinas'], queryFn: () => api<Rotina[]>('/rotinas'), refetchInterval: 30_000 })
+export function useRoutines() {
+  return useQuery({ queryKey: ['routines'], queryFn: () => api<Routine[]>('/routines'), refetchInterval: 30_000 })
 }
 
-export function useAcoesInternas() {
-  return useQuery({ queryKey: ['acoes'], queryFn: () => api<AcaoInterna[]>('/rotinas/acoes'), staleTime: Infinity })
+export function useInternalActions() {
+  return useQuery({ queryKey: ['actions'], queryFn: () => api<InternalAction[]>('/routines/actions'), staleTime: Infinity })
 }
 
-function useInvalidarRotinas() {
+function useInvalidateRoutines() {
   const qc = useQueryClient()
-  return () => Promise.all([qc.invalidateQueries({ queryKey: ['rotinas'] }), qc.invalidateQueries({ queryKey: ['hoje'] })])
+  return () => Promise.all([qc.invalidateQueries({ queryKey: ['routines'] }), qc.invalidateQueries({ queryKey: ['today'] })])
 }
 
-export type NovaRotina = Pick<Rotina, 'nome' | 'cron' | 'tier' | 'ativa' | 'skill' | 'acao' | 'descricao' | 'saida' | 'notificar'>
+export type NewRoutine = Pick<Routine, 'name' | 'cron' | 'tier' | 'active' | 'skill' | 'action' | 'description' | 'output' | 'notify'>
 
-export function useCriarRotina() {
-  const invalidar = useInvalidarRotinas()
-  return useMutation({ mutationFn: (r: NovaRotina) => post<Rotina>('/rotinas', r), onSuccess: invalidar })
+export function useCreateRoutine() {
+  const invalidate = useInvalidateRoutines()
+  return useMutation({ mutationFn: (r: NewRoutine) => post<Routine>('/routines', r), onSuccess: invalidate })
 }
 
-export function useEditarRotina() {
+export function useEditRoutine() {
   const qc = useQueryClient()
-  const invalidar = useInvalidarRotinas()
+  const invalidate = useInvalidateRoutines()
   return useMutation({
-    mutationFn: ({ slug, ...mudancas }: Partial<NovaRotina> & { slug: string }) => patch<Rotina>(`/rotinas/${slug}`, mudancas),
-    onMutate: async ({ slug, ...mudancas }) => {
-      await qc.cancelQueries({ queryKey: ['rotinas'] })
-      const anterior = qc.getQueryData<Rotina[]>(['rotinas'])
-      qc.setQueryData<Rotina[]>(['rotinas'], (l) => l?.map((r) => (r.slug === slug ? { ...r, ...mudancas } : r)))
-      return { anterior }
+    mutationFn: ({ slug, ...changes }: Partial<NewRoutine> & { slug: string }) => patch<Routine>(`/routines/${slug}`, changes),
+    onMutate: async ({ slug, ...changes }) => {
+      await qc.cancelQueries({ queryKey: ['routines'] })
+      const previous = qc.getQueryData<Routine[]>(['routines'])
+      qc.setQueryData<Routine[]>(['routines'], (l) => l?.map((r) => (r.slug === slug ? { ...r, ...changes } : r)))
+      return { previous }
     },
-    onError: (_e, _v, ctx) => qc.setQueryData(['rotinas'], ctx?.anterior),
-    onSettled: invalidar,
+    onError: (_e, _v, ctx) => qc.setQueryData(['routines'], ctx?.previous),
+    onSettled: invalidate,
   })
 }
 
-export function useRemoverRotina() {
-  const invalidar = useInvalidarRotinas()
-  return useMutation({ mutationFn: (slug: string) => del<null>(`/rotinas/${slug}`), onSuccess: invalidar })
+export function useRemoveRoutine() {
+  const invalidate = useInvalidateRoutines()
+  return useMutation({ mutationFn: (slug: string) => del<null>(`/routines/${slug}`), onSuccess: invalidate })
 }
 
-export function useRodarRotina() {
+export function useRunRoutine() {
   const qc = useQueryClient()
-  const invalidar = useInvalidarRotinas()
+  const invalidate = useInvalidateRoutines()
   return useMutation({
     mutationFn: (slug: string) =>
-      post<{ slug: string; tier: number; status: string; sessao_id?: string; recibo_id?: string; resposta?: string }>(
-        `/rotinas/${slug}/executar`,
+      post<{ slug: string; tier: number; status: string; session_id?: string; receipt_id?: string; response?: string }>(
+        `/routines/${slug}/run`,
         {},
       ),
-    onSuccess: () => Promise.all([invalidar(), qc.invalidateQueries({ queryKey: ['sessoes'] })]),
+    onSuccess: () => Promise.all([invalidate(), qc.invalidateQueries({ queryKey: ['sessions'] })]),
   })
 }
 
-// ---------- Saídas efêmeras e estudos ----------
+// ---------- Ephemeral outputs and studies ----------
 
-export function useEfemeros() {
-  return useQuery({ queryKey: ['efemeros'], queryFn: () => api<Efemero[]>('/efemeros'), refetchInterval: 60_000 })
+export function useEphemeral() {
+  return useQuery({ queryKey: ['ephemeral'], queryFn: () => api<Ephemeral[]>('/ephemeral'), refetchInterval: 60_000 })
 }
 
-export function useDescartarEfemero() {
+export function useDiscardEphemeral() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (id: string) => del<null>(`/efemeros/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['efemeros'] }),
+    mutationFn: (id: string) => del<null>(`/ephemeral/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['ephemeral'] }),
   })
 }
 
-export function useGuardarEfemero() {
-  const invalidar = useInvalidarTarefas()
+export function useSaveEphemeral() {
+  const invalidate = useInvalidateTasks()
   return useMutation({
-    mutationFn: ({ id, destino, texto }: { id: string; destino: 'raw' | 'tarefa'; texto?: string }) =>
-      post<{ arquivo?: string; tarefa?: Tarefa }>(`/efemeros/${id}/guardar`, { destino, texto }),
-    onSuccess: invalidar,
+    mutationFn: ({ id, target, text }: { id: string; target: 'raw' | 'task'; text?: string }) =>
+      post<{ file?: string; task?: Task }>(`/ephemeral/${id}/save`, { target, text }),
+    onSuccess: invalidate,
   })
 }
 
-export function useEstudos() {
-  return useQuery({ queryKey: ['estudos'], queryFn: () => api<Materia[]>('/estudos') })
+export function useStudies() {
+  return useQuery({ queryKey: ['studies'], queryFn: () => api<Subject[]>('/studies') })
 }
 
-export function useMateria(materia: string) {
-  return useQuery({ queryKey: ['estudos', materia], queryFn: () => api<MateriaDetalhe>(`/estudos/${encodeURIComponent(materia)}`) })
+export function useSubject(subject: string) {
+  return useQuery({ queryKey: ['studies', subject], queryFn: () => api<SubjectDetail>(`/studies/${encodeURIComponent(subject)}`) })
 }
 
-/** Quiz efêmero: gerado ao abrir a tela e descartado ao sair (gcTime 0, sem refazer sozinho). */
-export function useQuiz(materia: string, pedido: { quantidade: number; tipo: TipoQuiz; topico: string | null }, chave: string) {
+/** Ephemeral quiz: generated when the screen opens and thrown away on leaving (gcTime 0, never refetched by itself). */
+export function useQuiz(subject: string, request: { count: number; type: QuizType; topic: string | null }, key: string) {
   return useQuery({
-    queryKey: ['quiz', materia, pedido, chave],
-    queryFn: () => post<Quiz>(`/estudos/${encodeURIComponent(materia)}/quiz`, pedido),
+    queryKey: ['quiz', subject, request, key],
+    queryFn: () => post<Quiz>(`/studies/${encodeURIComponent(subject)}/quiz`, request),
     staleTime: Infinity,
     gcTime: 0,
     retry: false,
@@ -208,189 +238,188 @@ export function useQuiz(materia: string, pedido: { quantidade: number; tipo: Tip
   })
 }
 
-export function useCorrigirQuiz(materia: string) {
+export function useGradeQuiz(subject: string) {
   return useMutation({
-    mutationFn: (r: { pergunta: string; resposta_modelo: string; resposta: string; topico: string | null }) =>
-      post<CorrecaoQuiz>(`/estudos/${encodeURIComponent(materia)}/quiz/corrigir`, r),
+    mutationFn: (r: { question: string; model_answer: string; answer: string; topic: string | null }) =>
+      post<QuizGrade>(`/studies/${encodeURIComponent(subject)}/quiz/grade`, r),
   })
 }
 
-/** Apaga a matéria inteira (tópicos, anotações e material). */
-export function useRemoverMateria() {
+/** Deletes the whole subject (topics, annotations and material). */
+export function useRemoveSubject() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (materia: string) =>
-      del<{ titulo: string; topicos: number; anotacoes: number; fontes: number }>(`/estudos/${encodeURIComponent(materia)}`),
-    onSuccess: (_, materia) => {
-      qc.removeQueries({ queryKey: ['estudos', materia] })
-      qc.removeQueries({ queryKey: ['anotacoes', materia] })
-      return qc.invalidateQueries({ queryKey: ['estudos'] })
+    mutationFn: (subject: string) =>
+      del<{ title: string; topics: number; annotations: number; sources: number }>(`/studies/${encodeURIComponent(subject)}`),
+    onSuccess: (_, subject) => {
+      qc.removeQueries({ queryKey: ['studies', subject] })
+      qc.removeQueries({ queryKey: ['annotations', subject] })
+      return qc.invalidateQueries({ queryKey: ['studies'] })
     },
   })
 }
 
-export function useGerarEstudo() {
+export function useGenerateStudy() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (p: { pedido: string; tipo: 'materia' | 'nota' | 'aprofundar'; nota?: string }) => post<Sessao>('/estudos/gerar', p),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['sessoes'] }),
+    mutationFn: (p: { request: string; kind: 'subject' | 'topic' | 'deepen'; note?: string }) => post<Session>('/studies/generate', p),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['sessions'] }),
   })
 }
 
-// ---------- Recibos, custos e vault ----------
+// ---------- Receipts, costs and vault ----------
 
-export function useRecibos(filtros: { dias: number; tier?: number | null; origem?: string | null }) {
-  const q = new URLSearchParams({ dias: String(filtros.dias), limite: '500' })
-  if (filtros.tier) q.set('tier', String(filtros.tier))
-  if (filtros.origem) q.set('origem', filtros.origem)
-  return useQuery({ queryKey: ['recibos', filtros], queryFn: () => api<Recibo[]>(`/recibos?${q}`) })
+export function useReceipts(filters: { days: number; tier?: number | null; source?: string | null }) {
+  const q = new URLSearchParams({ days: String(filters.days), limit: '500' })
+  if (filters.tier) q.set('tier', String(filters.tier))
+  if (filters.source) q.set('source', filters.source)
+  return useQuery({ queryKey: ['receipts', filters], queryFn: () => api<Receipt[]>(`/receipts?${q}`) })
 }
 
-export function useRecibo(id: string | null) {
-  return useQuery({ queryKey: ['recibo', id], queryFn: () => api<Recibo & Nota>(`/recibos/${id}`), enabled: !!id })
+export function useReceipt(id: string | null) {
+  return useQuery({ queryKey: ['receipt', id], queryFn: () => api<Receipt & VaultNote>(`/receipts/${id}`), enabled: !!id })
 }
 
-export function useCustos(dias: number) {
-  return useQuery({ queryKey: ['custos', dias], queryFn: () => api<Custos>(`/custos?dias=${dias}`), refetchInterval: 60_000 })
+export function useCosts(days: number) {
+  return useQuery({ queryKey: ['costs', days], queryFn: () => api<Costs>(`/costs?days=${days}`), refetchInterval: 60_000 })
 }
 
-export function useArvore() {
-  return useQuery({ queryKey: ['arvore'], queryFn: () => api<NoArvore[]>('/vault/arvore') })
+export function useTree() {
+  return useQuery({ queryKey: ['tree'], queryFn: () => api<TreeNode[]>('/vault/tree') })
 }
 
-export function useNota(caminho: string | null) {
+export function useNote(path: string | null) {
   return useQuery({
-    queryKey: ['nota', caminho],
-    queryFn: () => api<Nota>(`/vault/nota?caminho=${encodeURIComponent(caminho ?? '')}`),
-    enabled: !!caminho,
+    queryKey: ['note', path],
+    queryFn: () => api<VaultNote>(`/vault/note?path=${encodeURIComponent(path ?? '')}`),
+    enabled: !!path,
   })
 }
 
-// ---------- Lembretes, notificações e propostas de evento ----------
+// ---------- Reminders, notifications and proposed events ----------
 
-export function useLembretes() {
-  return useQuery({ queryKey: ['lembretes'], queryFn: () => api<Lembrete[]>('/lembretes'), refetchInterval: 60_000 })
+export function useReminders() {
+  return useQuery({ queryKey: ['reminders'], queryFn: () => api<Reminder[]>('/reminders'), refetchInterval: 60_000 })
 }
 
-export function useEditarLembrete() {
+export function useEditReminder() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, ...mudancas }: { id: string; concluido?: boolean; adiar_min?: number; texto?: string }) =>
-      patch<Lembrete>(`/lembretes/${id}`, mudancas),
-    onSettled: () => qc.invalidateQueries({ queryKey: ['lembretes'] }),
+    mutationFn: ({ id, ...changes }: { id: string; done?: boolean; snooze_min?: number; text?: string }) =>
+      patch<Reminder>(`/reminders/${id}`, changes),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['reminders'] }),
   })
 }
 
-export function useRemoverLembrete() {
+export function useRemoveReminder() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (id: string) => del<null>(`/lembretes/${id}`),
-    onSettled: () => qc.invalidateQueries({ queryKey: ['lembretes'] }),
+    mutationFn: (id: string) => del<null>(`/reminders/${id}`),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['reminders'] }),
   })
 }
 
-export function useAparelhosPush() {
-  return useQuery({ queryKey: ['push'], queryFn: () => api<AparelhoPush[]>('/push/inscricoes') })
+export function usePushDevices() {
+  return useQuery({ queryKey: ['push'], queryFn: () => api<PushDevice[]>('/push/subscriptions') })
 }
 
-export function useConfirmarProposta() {
+export function useConfirmProposal() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, evento }: { id: string; evento: EventoProposto }) =>
-      post<{ proposta: PropostaResumo; sessao: Sessao }>(`/propostas/${id}/confirmar`, { evento }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['sessoes'] }),
+    mutationFn: ({ id, event }: { id: string; event: ProposedEvent }) =>
+      post<{ proposal: ProposalSummary; session: Session }>(`/proposals/${id}/confirm`, { event }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['sessions'] }),
   })
 }
 
-export function useDescartarProposta() {
-  return useMutation({ mutationFn: (id: string) => del<null>(`/propostas/${id}`) })
+export function useDiscardProposal() {
+  return useMutation({ mutationFn: (id: string) => del<null>(`/proposals/${id}`) })
 }
 
-// ---------- Anotações e material de estudo ----------
+// ---------- Study annotations and material ----------
 
-const qMateria = (m: string) => `/estudos/${encodeURIComponent(m)}`
+const subjectPath = (s: string) => `/studies/${encodeURIComponent(s)}`
 
-export function useAnotacoes(materia: string, topico: string) {
+export function useAnnotations(subject: string, topic: string) {
   return useQuery({
-    queryKey: ['anotacoes', materia, topico],
-    queryFn: () => api<Anotacao[]>(`${qMateria(materia)}/anotacoes?topico=${encodeURIComponent(topico)}`),
+    queryKey: ['annotations', subject, topic],
+    queryFn: () => api<Annotation[]>(`${subjectPath(subject)}/annotations?topic=${encodeURIComponent(topic)}`),
   })
 }
 
-function useInvalidarAnotacoes(materia: string) {
+function useInvalidateAnnotations(subject: string) {
   const qc = useQueryClient()
-  return () => Promise.all([qc.invalidateQueries({ queryKey: ['anotacoes', materia] }), qc.invalidateQueries({ queryKey: ['estudos', materia] })])
+  return () => Promise.all([qc.invalidateQueries({ queryKey: ['annotations', subject] }), qc.invalidateQueries({ queryKey: ['studies', subject] })])
 }
 
-export function useSalvarAnotacao(materia: string) {
-  const invalidar = useInvalidarAnotacoes(materia)
+export function useSaveAnnotation(subject: string) {
+  const invalidate = useInvalidateAnnotations(subject)
   return useMutation({
-    mutationFn: (a: { arquivo?: string; texto: string; titulo?: string | null; topico?: string | null; origem?: 'quiz' }) =>
-      a.arquivo
-        ? put<Anotacao>(`${qMateria(materia)}/anotacoes`, { arquivo: a.arquivo, texto: a.texto, titulo: a.titulo ?? null })
-        : post<Anotacao>(`${qMateria(materia)}/anotacoes`, { texto: a.texto, titulo: a.titulo ?? null, topico: a.topico ?? null, origem: a.origem ?? null }),
-    onSuccess: invalidar,
+    mutationFn: (a: { file?: string; text: string; title?: string | null; topic?: string | null; source?: 'quiz' }) =>
+      a.file
+        ? put<Annotation>(`${subjectPath(subject)}/annotations`, { file: a.file, text: a.text, title: a.title ?? null })
+        : post<Annotation>(`${subjectPath(subject)}/annotations`, { text: a.text, title: a.title ?? null, topic: a.topic ?? null, source: a.source ?? null }),
+    onSuccess: invalidate,
   })
 }
 
-export function useRemoverAnotacao(materia: string) {
-  const invalidar = useInvalidarAnotacoes(materia)
+export function useRemoveAnnotation(subject: string) {
+  const invalidate = useInvalidateAnnotations(subject)
   return useMutation({
-    mutationFn: (arquivo: string) => del<null>(`${qMateria(materia)}/anotacoes?arquivo=${encodeURIComponent(arquivo)}`),
-    onSuccess: invalidar,
+    mutationFn: (file: string) => del<null>(`${subjectPath(subject)}/annotations?file=${encodeURIComponent(file)}`),
+    onSuccess: invalidate,
   })
 }
 
-export function useEnviarMaterial(materia: string) {
+export function useSendMaterial(subject: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (m: { arquivos: File[]; texto: string; topico?: string; estruturar: boolean }) => {
+    mutationFn: (m: { files: File[]; text: string; topic?: string; structure: boolean }) => {
       const form = new FormData()
-      m.arquivos.forEach((a) => form.append('arquivos', a, a.name))
-      form.append('texto', m.texto)
-      form.append('topico', m.topico ?? '')
-      form.append('estruturar', String(m.estruturar))
-      return postForm<{ fontes: string[]; sessao: Sessao | null }>(`${qMateria(materia)}/material`, form)
+      m.files.forEach((f) => form.append('files', f, f.name))
+      form.append('text', m.text)
+      form.append('topic', m.topic ?? '')
+      form.append('structure', String(m.structure))
+      return postForm<{ sources: string[]; session: Session | null }>(`${subjectPath(subject)}/material`, form)
     },
-    onSuccess: () => Promise.all([qc.invalidateQueries({ queryKey: ['estudos', materia] }), qc.invalidateQueries({ queryKey: ['sessoes'] })]),
+    onSuccess: () => Promise.all([qc.invalidateQueries({ queryKey: ['studies', subject] }), qc.invalidateQueries({ queryKey: ['sessions'] })]),
   })
 }
 
+// ---------- Research (web) and Library ----------
 
-// ---------- Pesquisas (web) e Biblioteca ----------
-
-export function useEfemero(id: string | null | undefined) {
-  return useQuery({ queryKey: ['efemero', id], queryFn: () => api<Efemero>(`/efemeros/${id}`), enabled: !!id, retry: false })
+export function useEphemeralItem(id: string | null | undefined) {
+  return useQuery({ queryKey: ['ephemeral', id], queryFn: () => api<Ephemeral>(`/ephemeral/${id}`), enabled: !!id, retry: false })
 }
 
-export function useGuardarPesquisa() {
+export function useSaveResearch() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (efemeroId: string) => post<Sessao>(`/pesquisas/${efemeroId}/guardar`, {}),
-    onSuccess: () => Promise.all(['sessoes', 'efemeros'].map((k) => qc.invalidateQueries({ queryKey: [k] }))),
+    mutationFn: (ephemeralId: string) => post<Session>(`/research/${ephemeralId}/save`, {}),
+    onSuccess: () => Promise.all(['sessions', 'ephemeral'].map((k) => qc.invalidateQueries({ queryKey: [k] }))),
   })
 }
 
-export function useNovaPesquisa() {
+export function useNewResearch() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (p: { pedido: string; tema?: string; tipo?: 'pesquisa' | 'plano'; atualizar?: string }) => post<Sessao>('/pesquisas', p),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['sessoes'] }),
+    mutationFn: (p: { request: string; topic?: string; kind?: 'research' | 'plan'; update?: string }) => post<Session>('/research', p),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['sessions'] }),
   })
 }
 
-export function useBiblioteca() {
-  return useQuery({ queryKey: ['biblioteca'], queryFn: () => api<TemaBiblioteca[]>('/biblioteca') })
+export function useLibrary() {
+  return useQuery({ queryKey: ['library'], queryFn: () => api<LibraryTopic[]>('/library') })
 }
 
-export function useTemaBiblioteca(slug: string) {
-  return useQuery({ queryKey: ['biblioteca', slug], queryFn: () => api<TemaBibliotecaDetalhe>(`/biblioteca/${encodeURIComponent(slug)}`) })
+export function useLibraryTopic(slug: string) {
+  return useQuery({ queryKey: ['library', slug], queryFn: () => api<LibraryTopicDetail>(`/library/${encodeURIComponent(slug)}`) })
 }
 
-export function useTarefasDoChecklist(slug: string) {
-  const invalidar = useInvalidarTarefas()
+export function useChecklistToTasks(slug: string) {
+  const invalidate = useInvalidateTasks()
   return useMutation({
-    mutationFn: () => post<{ criadas: string[] }>(`/biblioteca/${encodeURIComponent(slug)}/tarefas`, {}),
-    onSuccess: invalidar,
+    mutationFn: () => post<{ created: string[] }>(`/library/${encodeURIComponent(slug)}/tasks`, {}),
+    onSuccess: invalidate,
   })
 }

@@ -1,11 +1,11 @@
-"""Claude Code falso para testes: imita `claude -p --output-format json|stream-json`.
+"""Fake Claude Code for tests: imitates `claude -p --output-format json|stream-json`.
 
-O comportamento sai do texto do pedido (stdin):
-- Tier 2 (json): "ESCALAR" → decide escalar; "INVALIDO" → texto que não é JSON; senão responde.
-- Quiz (json): `<quiz_gerar quantidade="N" tipo="T">` → N perguntas do primeiro tópico do pedido;
-  `<quiz_corrigir>` → "certo" se a resposta do usuário contém "taxa", senão "errado".
-- Tier 3 (stream-json): escreve um arquivo em output/ e termina; "DEMORA" → fica parado 30 s;
-  "FALHA" → termina com erro.
+The behavior comes from the request text (stdin):
+- Tier 2 (json): "ESCALATE" → decides to escalate; "INVALID" → text that isn't JSON; otherwise it answers.
+- Quiz (json): `<quiz_generate count="N" type="T">` → N questions from the request's first topic;
+  `<quiz_grade>` → "correct" if the user's answer contains "rate", otherwise "wrong".
+- Tier 3 (stream-json): writes a file in output/ and ends; "SLOW" → stalls for 30 s;
+  "FAIL" → ends with an error.
 """
 
 import json
@@ -17,98 +17,90 @@ import uuid
 from pathlib import Path
 
 
-LENTO = os.environ.get("FAKE_CLAUDE_LENTO") == "1"  # pausas para demonstrar o stream ao vivo
+SLOW_STREAM = os.environ.get("FAKE_CLAUDE_SLOW") == "1"  # pauses to demo the live stream
 
 
-def emitir(obj: dict) -> None:
-    if LENTO:
+def emit(obj: dict) -> None:
+    if SLOW_STREAM:
         time.sleep(0.8)
     sys.stdout.write(json.dumps(obj, ensure_ascii=False) + "\n")
     sys.stdout.flush()
 
 
+def result(data: dict, session_id: str, usage: dict, structured: bool = True, **extra) -> None:
+    emit({"type": "result", "subtype": "success", "is_error": False, "result": json.dumps(data, ensure_ascii=False),
+          **({"structured_output": data} if structured else {}), "session_id": session_id, "duration_ms": 800,
+          "total_cost_usd": 0.001, "usage": usage, "modelUsage": {"claude-haiku-4-5": {}}, **extra})
+
+
 def main() -> None:
     args = sys.argv[1:]
     prompt = sys.stdin.read()
-    formato = args[args.index("--output-format") + 1]
+    fmt = args[args.index("--output-format") + 1]
     session_id = str(uuid.uuid4())
     if "--resume" in args:
         session_id = args[args.index("--resume") + 1]
     usage = {"input_tokens": 100, "cache_read_input_tokens": 50, "output_tokens": 20}
 
-    if formato == "json":
-        if m := re.search(r'<quiz_gerar quantidade="(\d+)" tipo="(\w+)">', prompt):
-            n, tipo = int(m.group(1)), m.group(2)
-            topico = re.search(r'<topico caminho="([^"]+)"', prompt).group(1)
-            perguntas = [{"pergunta": f"Pergunta {i + 1}?", "resposta": "A taxa de variação.", "explicacao": "Porque sim.",
-                          "topico": topico, **({"opcoes": ["A", "B", "C", "D"], "correta": i % 4} if tipo == "multipla" else {})}
+    if fmt == "json":
+        if m := re.search(r'<quiz_generate count="(\d+)" type="(\w+)">', prompt):
+            n, kind = int(m.group(1)), m.group(2)
+            topic = re.search(r'<topic path="([^"]+)"', prompt).group(1)
+            questions = [{"question": f"Question {i + 1}?", "answer": "The rate of change.", "explanation": "Because.",
+                          "topic": topic, **({"options": ["A", "B", "C", "D"], "correct": i % 4} if kind == "multiple" else {})}
                          for i in range(n)]
-            perguntas.append({"pergunta": "sem resposta"})  # inválida: o Bridge descarta
-            dados = {"perguntas": perguntas}
-            emitir({"type": "result", "subtype": "success", "is_error": False, "result": json.dumps(dados),
-                    "structured_output": dados, "session_id": session_id, "duration_ms": 900,
-                    "total_cost_usd": 0.002, "usage": usage, "modelUsage": {"claude-haiku-4-5": {}}})
-        elif "<quiz_corrigir>" in prompt:
-            usuario = prompt.split("<resposta_do_usuario>")[1]
-            certo = "taxa" in usuario
-            dados = {"veredito": "certo" if certo else "errado", "comentario": "Boa!" if certo else "Não é isso.",
-                     "complemento": "A derivada é a taxa de variação instantânea."}
-            emitir({"type": "result", "subtype": "success", "is_error": False, "result": json.dumps(dados),
-                    "structured_output": dados, "session_id": session_id, "duration_ms": 500,
-                    "total_cost_usd": 0.001, "usage": usage, "modelUsage": {"claude-haiku-4-5": {}}})
-        elif "ESCALAR" in prompt:
-            dados = {"acao": "escalar", "motivo": "Precisa mexer no vault.", "tarefa": "Organize o raw/ (ESCALADO)", "skill": None}
-            emitir({"type": "result", "subtype": "success", "is_error": False, "result": json.dumps(dados),
-                    "structured_output": dados, "session_id": session_id, "duration_ms": 900,
-                    "total_cost_usd": 0.0012, "usage": usage, "modelUsage": {"claude-haiku-4-5": {}}})
-        elif "PESQUISAR" in prompt:
-            dados = {"acao": "pesquisar", "tema": "Mudança para o Canadá", "tipo": "pesquisa",
-                     "consulta": "Pesquise vistos, custo de vida e trabalho para morar no Canadá.", "atualizar": None}
-            emitir({"type": "result", "subtype": "success", "is_error": False, "result": json.dumps(dados),
-                    "structured_output": dados, "session_id": session_id, "duration_ms": 800,
-                    "total_cost_usd": 0.001, "usage": usage, "modelUsage": {"claude-haiku-4-5": {}}})
-        elif "CAPTURAR" in prompt:
-            dados = {"acao": "capturar", "itens": [
-                {"tipo": "evento", "titulo": "Aniversário do Artur (irmão)", "data": "2026-10-03", "dia_inteiro": True, "repetir": "anual"},
-                {"tipo": "tarefa", "texto": "Comprar presente", "vence": "2026-10-09"},
-                {"tipo": "lembrete", "texto": "Ligar pro Artur", "quando": "2026-10-03T18:00"},
-                {"tipo": "lembrete", "texto": "Tomar remédio", "hora": "22:00", "dias_semana": []},
-            ]}
-            emitir({"type": "result", "subtype": "success", "is_error": False, "result": json.dumps(dados),
-                    "structured_output": dados, "session_id": session_id, "duration_ms": 800,
-                    "total_cost_usd": 0.001, "usage": usage, "modelUsage": {"claude-haiku-4-5": {}}})
-        elif "INVALIDO" in prompt:
-            emitir({"type": "result", "subtype": "success", "is_error": False, "result": "Olá! Não sei JSON.",
-                    "session_id": session_id, "duration_ms": 500, "total_cost_usd": 0.001, "usage": usage})
+            questions.append({"question": "no answer"})  # invalid: the Bridge drops it
+            result({"questions": questions}, session_id, usage, duration_ms=900, total_cost_usd=0.002)
+        elif "<quiz_grade>" in prompt:
+            user = prompt.split("<user_answer>")[1]
+            correct = "rate" in user
+            result({"verdict": "correct" if correct else "wrong", "comment": "Nice!" if correct else "That's not it.",
+                    "detail": "The derivative is the instantaneous rate of change."}, session_id, usage, duration_ms=500)
+        elif "ESCALATE" in prompt:
+            result({"action": "escalate", "reason": "This needs work in the vault.", "task": "Organize raw/ (ESCALATED)", "skill": None},
+                   session_id, usage, duration_ms=900, total_cost_usd=0.0012)
+        elif "RESEARCH" in prompt:
+            result({"action": "research", "topic": "Moving to Canada", "kind": "research",
+                    "query": "Research visas, cost of living and work to live in Canada.", "update": None}, session_id, usage)
+        elif "CAPTURE" in prompt:
+            result({"action": "capture", "items": [
+                {"type": "event", "title": "Arthur's birthday (brother)", "date": "2026-10-03", "all_day": True, "repeat": "yearly"},
+                {"type": "task", "text": "Buy a present", "due": "2026-10-09"},
+                {"type": "reminder", "text": "Call Arthur", "when": "2026-10-03T18:00"},
+                {"type": "reminder", "text": "Take medicine", "time": "22:00", "weekdays": []},
+            ]}, session_id, usage)
+        elif "INVALID" in prompt:
+            emit({"type": "result", "subtype": "success", "is_error": False, "result": "Hello! I don't speak JSON.",
+                  "session_id": session_id, "duration_ms": 500, "total_cost_usd": 0.001, "usage": usage})
         else:
-            dados = {"acao": "responder", "resposta": "Derivada é a taxa de variação instantânea."}
-            # Sem structured_output: o Bridge deve extrair o JSON do texto (inclusive de um bloco ```json).
-            emitir({"type": "result", "subtype": "success", "is_error": False,
-                    "result": "```json\n" + json.dumps(dados, ensure_ascii=False) + "\n```",
-                    "session_id": session_id, "duration_ms": 700, "total_cost_usd": 0.0011, "usage": usage,
-                    "modelUsage": {"claude-haiku-4-5": {}}})
+            data = {"action": "answer", "reply": "A derivative is the instantaneous rate of change."}
+            # No structured_output: the Bridge must pull the JSON out of the text (including a ```json block).
+            emit({"type": "result", "subtype": "success", "is_error": False,
+                  "result": "```json\n" + json.dumps(data, ensure_ascii=False) + "\n```",
+                  "session_id": session_id, "duration_ms": 700, "total_cost_usd": 0.0011, "usage": usage,
+                  "modelUsage": {"claude-haiku-4-5": {}}})
         return
 
     # stream-json (Tier 3)
-    emitir({"type": "system", "subtype": "init", "session_id": session_id, "model": "claude-sonnet-5-5", "cwd": str(Path.cwd())})
-    if "DEMORA" in prompt:
+    emit({"type": "system", "subtype": "init", "session_id": session_id, "model": "claude-sonnet-5-5", "cwd": str(Path.cwd())})
+    if "SLOW" in prompt:
         time.sleep(30)
-    destino = Path.cwd() / "output" / "relatorio-teste.md"
-    emitir({"type": "assistant", "message": {"content": [
-        {"type": "text", "text": "Vou criar o relatório."},
-        {"type": "tool_use", "id": "t1", "name": "Write", "input": {"file_path": str(destino), "content": "# Relatório"}},
+    target = Path.cwd() / "output" / "test-report.md"
+    emit({"type": "assistant", "message": {"content": [
+        {"type": "text", "text": "I'll write the report."},
+        {"type": "tool_use", "id": "t1", "name": "Write", "input": {"file_path": str(target), "content": "# Report"}},
     ]}})
-    destino.parent.mkdir(parents=True, exist_ok=True)
-    destino.write_text(f"# Relatório\n\nPedido: {prompt.strip()}\n", encoding="utf-8")
-    sys.stdout.write("linha que não é json\n")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(f"# Report\n\nRequest: {prompt.strip()}\n", encoding="utf-8")
+    sys.stdout.write("a line that is not json\n")
     sys.stdout.flush()
-    if "FALHA" in prompt:
-        emitir({"type": "result", "subtype": "error_during_execution", "is_error": True, "result": "",
-                "session_id": session_id, "duration_ms": 300, "total_cost_usd": 0.002, "usage": usage})
+    if "FAIL" in prompt:
+        emit({"type": "result", "subtype": "error_during_execution", "is_error": True, "result": "",
+              "session_id": session_id, "duration_ms": 300, "total_cost_usd": 0.002, "usage": usage})
         sys.exit(1)
-    emitir({"type": "result", "subtype": "success", "is_error": False, "result": "Pronto: criei output/relatorio-teste.md.",
-            "session_id": session_id, "duration_ms": 1500, "total_cost_usd": 0.02, "usage": usage,
-            "modelUsage": {"claude-sonnet-5-5": {}}})
+    emit({"type": "result", "subtype": "success", "is_error": False, "result": "Done: I wrote output/test-report.md.",
+          "session_id": session_id, "duration_ms": 1500, "total_cost_usd": 0.02, "usage": usage,
+          "modelUsage": {"claude-sonnet-5-5": {}}})
 
 
 if __name__ == "__main__":

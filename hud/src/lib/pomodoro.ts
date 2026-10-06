@@ -1,83 +1,83 @@
 import { useSyncExternalStore } from 'react'
 import { del, post } from './api'
-import { mascote } from './mascote'
+import { mascot } from './mascot'
 
-// Pomodoro do Gandalf: foco → pausa curta (a cada 4 focos, pausa longa). O estado fica no localStorage
-// (sobrevive a recarregar a página) e o fim de cada fase também é agendado no Bridge, que manda um push:
-// no celular o navegador congela o timer da página quando o app vai para o fundo.
+// Gandalf's pomodoro: focus → short break (every 4 focus blocks, a long break). The state lives in localStorage
+// (survives a page reload) and the end of each phase is also scheduled on the Bridge, which sends a push:
+// on the phone the browser freezes the page's timer when the app goes to the background.
 
-export type Fase = 'foco' | 'pausa' | 'longa'
-export type Preset = { foco: number; pausa: number; longa: number }
+export type Phase = 'focus' | 'break' | 'long'
+export type Preset = { focus: number; break: number; long: number }
 
 export const PRESETS: Record<string, Preset> = {
-  '25/5': { foco: 25, pausa: 5, longa: 15 },
-  '50/10': { foco: 50, pausa: 10, longa: 20 },
+  '25/5': { focus: 25, break: 5, long: 15 },
+  '50/10': { focus: 50, break: 10, long: 20 },
 }
 
-export const NOME_FASE: Record<Fase, string> = { foco: 'Foco', pausa: 'Pausa', longa: 'Pausa longa' }
+export const PHASE_NAME: Record<Phase, string> = { focus: 'Focus', break: 'Break', long: 'Long break' }
 
-export type EstadoPomodoro = {
-  fase: Fase
-  rodando: boolean
-  /** Quando a fase acaba (ms desde 1970), se rodando. */
-  fimEm: number | null
-  /** Quanto falta (ms) quando pausado ou parado. */
-  restanteMs: number
+export type PomodoroState = {
+  phase: Phase
+  running: boolean
+  /** When the phase ends (ms since 1970), if running. */
+  endsAt: number | null
+  /** How much is left (ms) when paused or stopped. */
+  remainingMs: number
   preset: string
-  focosHoje: number
-  dia: string
-  rotulo: string
-  /** Mostrado quando uma fase acaba (até o usuário começar a próxima). */
-  acabou: Fase | null
+  focusToday: number
+  day: string
+  label: string
+  /** Shown when a phase ends (until the user starts the next one). */
+  finished: Phase | null
 }
 
-const CHAVE = 'gandalf-pomodoro'
-const hojeISO = () => new Date().toLocaleDateString('sv-SE') // AAAA-MM-DD no fuso local
+const KEY = 'gandalf-pomodoro'
+const todayISO = () => new Date().toLocaleDateString('sv-SE') // YYYY-MM-DD in the local time zone
 
-function duracaoMs(fase: Fase, preset: string): number {
-  return (PRESETS[preset] ?? PRESETS['25/5'])[fase] * 60_000
+function durationMs(phase: Phase, preset: string): number {
+  return (PRESETS[preset] ?? PRESETS['25/5'])[phase] * 60_000
 }
 
-function inicial(): EstadoPomodoro {
-  return { fase: 'foco', rodando: false, fimEm: null, restanteMs: duracaoMs('foco', '25/5'), preset: '25/5', focosHoje: 0, dia: hojeISO(), rotulo: '', acabou: null }
+function initial(): PomodoroState {
+  return { phase: 'focus', running: false, endsAt: null, remainingMs: durationMs('focus', '25/5'), preset: '25/5', focusToday: 0, day: todayISO(), label: '', finished: null }
 }
 
-function carregar(): EstadoPomodoro {
+function load(): PomodoroState {
   try {
-    const e = { ...inicial(), ...(JSON.parse(localStorage.getItem(CHAVE) ?? '{}') as Partial<EstadoPomodoro>) }
-    return e.dia === hojeISO() ? e : { ...e, focosHoje: 0, dia: hojeISO() }
+    const s = { ...initial(), ...(JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<PomodoroState>) }
+    return s.day === todayISO() ? s : { ...s, focusToday: 0, day: todayISO() }
   } catch {
-    return inicial()
+    return initial()
   }
 }
 
-let estado: EstadoPomodoro = carregar()
-const ouvintes = new Set<() => void>()
-let relogio: ReturnType<typeof setInterval> | null = null
-let agora = Date.now()
+let state: PomodoroState = load()
+const listeners = new Set<() => void>()
+let clock: ReturnType<typeof setInterval> | null = null
+let now = Date.now()
 
-function salvar(novo: Partial<EstadoPomodoro>) {
-  estado = { ...estado, ...novo }
+function save(next: Partial<PomodoroState>) {
+  state = { ...state, ...next }
   try {
-    localStorage.setItem(CHAVE, JSON.stringify(estado))
+    localStorage.setItem(KEY, JSON.stringify(state))
   } catch {
-    // sem persistência: vale só nesta aba
+    // no persistence: only valid in this tab
   }
-  ouvintes.forEach((f) => f())
+  listeners.forEach((f) => f())
 }
 
-function avisoServidor(fimEm: number, fase: Fase) {
-  const titulo = fase === 'foco' ? '🍅 Foco concluído! Hora de uma pausa' : '⏰ Pausa acabou: de volta ao foco'
-  const corpo = estado.rotulo ? `${estado.rotulo}` : 'Toque para abrir o Gandalf.'
-  post('/pomodoro', { fim: new Date(fimEm).toISOString(), titulo, corpo }).catch(() => {})
+function serverAlert(endsAt: number, phase: Phase) {
+  const title = phase === 'focus' ? '🍅 Focus done! Time for a break' : '⏰ Break is over: back to focus'
+  const body = state.label ? `${state.label}` : 'Tap to open Gandalf.'
+  post('/pomodoro', { end: new Date(endsAt).toISOString(), title, body }).catch(() => {})
 }
 
-function cancelarServidor() {
+function cancelServer() {
   del('/pomodoro').catch(() => {})
 }
 
-/** Toque curto (WebAudio), sem arquivo de som. */
-function tocar() {
+/** A short chime (WebAudio), no sound file. */
+function chime() {
   try {
     const ctx = new AudioContext()
     ;[0, 0.18, 0.36].forEach((t, i) => {
@@ -92,82 +92,82 @@ function tocar() {
       osc.stop(ctx.currentTime + t + 0.32)
     })
   } catch {
-    // sem áudio: o aviso visual e o push bastam
+    // no audio: the visual alert and the push are enough
   }
 }
 
-function concluirFase() {
-  const terminou = estado.fase
-  const focos = terminou === 'foco' ? estado.focosHoje + 1 : estado.focosHoje
-  const proxima: Fase = terminou === 'foco' ? (focos % 4 === 0 ? 'longa' : 'pausa') : 'foco'
-  salvar({ fase: proxima, rodando: false, fimEm: null, restanteMs: duracaoMs(proxima, estado.preset), focosHoje: focos, acabou: terminou })
-  tocar()
-  mascote.reagir('feliz', 3000)
+function finishPhase() {
+  const ended = state.phase
+  const focus = ended === 'focus' ? state.focusToday + 1 : state.focusToday
+  const next: Phase = ended === 'focus' ? (focus % 4 === 0 ? 'long' : 'break') : 'focus'
+  save({ phase: next, running: false, endsAt: null, remainingMs: durationMs(next, state.preset), focusToday: focus, finished: ended })
+  chime()
+  mascot.react('happy', 3000)
 }
 
 function tick() {
-  agora = Date.now()
-  if (estado.rodando && estado.fimEm && agora >= estado.fimEm) concluirFase()
-  else ouvintes.forEach((f) => f())
+  now = Date.now()
+  if (state.running && state.endsAt && now >= state.endsAt) finishPhase()
+  else listeners.forEach((f) => f())
 }
 
-function garantirRelogio() {
-  if (estado.rodando && !relogio) relogio = setInterval(tick, 1000)
-  if (!estado.rodando && relogio) {
-    clearInterval(relogio)
-    relogio = null
+function ensureClock() {
+  if (state.running && !clock) clock = setInterval(tick, 1000)
+  if (!state.running && clock) {
+    clearInterval(clock)
+    clock = null
   }
 }
 
 export const pomodoro = {
-  iniciar(rotulo?: string) {
-    const fimEm = Date.now() + estado.restanteMs
-    salvar({ rodando: true, fimEm, acabou: null, ...(rotulo !== undefined ? { rotulo } : {}) })
-    avisoServidor(fimEm, estado.fase)
-    garantirRelogio()
-    agora = Date.now()
+  start(label?: string) {
+    const endsAt = Date.now() + state.remainingMs
+    save({ running: true, endsAt, finished: null, ...(label !== undefined ? { label } : {}) })
+    serverAlert(endsAt, state.phase)
+    ensureClock()
+    now = Date.now()
   },
-  pausar() {
-    if (!estado.rodando || !estado.fimEm) return
-    salvar({ rodando: false, restanteMs: Math.max(0, estado.fimEm - Date.now()), fimEm: null })
-    cancelarServidor()
-    garantirRelogio()
+  pause() {
+    if (!state.running || !state.endsAt) return
+    save({ running: false, remainingMs: Math.max(0, state.endsAt - Date.now()), endsAt: null })
+    cancelServer()
+    ensureClock()
   },
-  reiniciar() {
-    salvar({ rodando: false, fimEm: null, restanteMs: duracaoMs(estado.fase, estado.preset), acabou: null })
-    cancelarServidor()
-    garantirRelogio()
+  restart() {
+    save({ running: false, endsAt: null, remainingMs: durationMs(state.phase, state.preset), finished: null })
+    cancelServer()
+    ensureClock()
   },
-  pular() {
-    cancelarServidor()
-    concluirFase()
-    garantirRelogio()
+  skip() {
+    cancelServer()
+    finishPhase()
+    ensureClock()
   },
-  focar(rotulo: string) {
-    // "Estudar agora": começa um foco novo com o nome do que vai estudar.
-    cancelarServidor()
-    salvar({ fase: 'foco', rodando: false, fimEm: null, restanteMs: duracaoMs('foco', estado.preset), acabou: null })
-    pomodoro.iniciar(rotulo)
+  focus(label: string) {
+    // "Focus" on a topic: starts a new focus block named after what will be studied.
+    cancelServer()
+    save({ phase: 'focus', running: false, endsAt: null, remainingMs: durationMs('focus', state.preset), finished: null })
+    pomodoro.start(label)
   },
-  escolherPreset(preset: string) {
-    if (!PRESETS[preset] || estado.rodando) return
-    salvar({ preset, restanteMs: duracaoMs(estado.fase, preset) })
+  choosePreset(preset: string) {
+    if (!PRESETS[preset] || state.running) return
+    save({ preset, remainingMs: durationMs(state.phase, preset) })
   },
-  rotular(rotulo: string) {
-    salvar({ rotulo: rotulo.slice(0, 80) })
+  setLabel(label: string) {
+    save({ label: label.slice(0, 80) })
   },
-  fecharAviso() {
-    salvar({ acabou: null })
+  dismiss() {
+    save({ finished: null })
   },
 }
 
-/** Tempo restante (ms) da fase atual. */
-export function restante(e: EstadoPomodoro, ms: number = agora): number {
-  return e.rodando && e.fimEm ? Math.max(0, e.fimEm - ms) : e.restanteMs
+/** Time left (ms) in the current phase. */
+export function remaining(s: PomodoroState, ms: number = now): number {
+  return s.running && s.endsAt ? Math.max(0, s.endsAt - ms) : s.remainingMs
 }
 
-export function total(e: EstadoPomodoro): number {
-  return duracaoMs(e.fase, e.preset)
+export function total(s: PomodoroState): number {
+  return durationMs(s.phase, s.preset)
 }
 
 export function mmss(ms: number): string {
@@ -175,22 +175,22 @@ export function mmss(ms: number): string {
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
 }
 
-function inscrever(f: () => void) {
-  ouvintes.add(f)
-  garantirRelogio()
-  queueMicrotask(tick) // fase que acabou enquanto a página estava fechada
+function subscribe(f: () => void) {
+  listeners.add(f)
+  ensureClock()
+  queueMicrotask(tick) // a phase that ended while the page was closed
   return () => {
-    ouvintes.delete(f)
+    listeners.delete(f)
   }
 }
 
-let ultimo = { estado, agora }
-function instantaneo() {
-  if (ultimo.estado !== estado || ultimo.agora !== agora) ultimo = { estado, agora }
-  return ultimo
+let last = { state, now }
+function snapshot() {
+  if (last.state !== state || last.now !== now) last = { state, now }
+  return last
 }
 
-/** Estado + "agora" do relógio (atualiza a cada segundo enquanto roda). */
+/** State + the clock's "now" (updates every second while running). */
 export function usePomodoro() {
-  return useSyncExternalStore(inscrever, instantaneo)
+  return useSyncExternalStore(subscribe, snapshot)
 }

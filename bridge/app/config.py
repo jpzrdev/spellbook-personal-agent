@@ -1,4 +1,4 @@
-"""Configuração do Bridge, carregada do .env na raiz do repositório."""
+"""Bridge settings, loaded from the .env at the repository root."""
 
 import os
 from dataclasses import dataclass
@@ -9,6 +9,10 @@ from dotenv import load_dotenv
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
+# Languages the assistant can speak. The code and the HUD are always in English; this only changes
+# how Gandalf talks to the user and the language of the notes it writes in the vault.
+LANGUAGES = ("en", "pt-BR")
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -17,33 +21,46 @@ class Settings:
     port: int
     token: str
     timezone: str
-    # IA via Claude Code (assinatura do usuário)
+    language: str
+    # AI through Claude Code (the user's subscription)
     claude_bin: str
     tier2_model: str
     tier3_model: str
     tier3_timeout_min: float
-    tier3_max_simultaneas: int
-    limite_diario_chamadas: int
-    # Saídas efêmeras: fora do vault e do git
-    dados_path: Path
-    efemero_horas: float
-    # Voz (offline)
-    whisper_modelo: str
-    voz_tts: str
-    voz_velocidade: float
-    # Lembretes, notificações e criação de eventos (Fase 8)
-    push_contato: str
-    agendar_modelo: str
+    tier3_max_concurrent: int
+    daily_call_limit: int
+    # Ephemeral outputs: outside the vault and git
+    data_path: Path
+    ephemeral_hours: float
+    # Voice (offline)
+    whisper_model: str
+    tts_voice: str
+    voice_speed: float
+    # Reminders, notifications and event creation
+    push_contact: str
+    schedule_event_model: str
 
 
-def _env(nome: str) -> str:
-    """GANDALF_<nome>, aceitando o nome antigo JEV_<nome> (o assistente se chamava Jev)."""
-    return (os.getenv(f"GANDALF_{nome}") or os.getenv(f"JEV_{nome}") or "").strip()
+def _env(name: str) -> str:
+    return os.getenv(f"GANDALF_{name}", "").strip()
 
 
-def _int(nome: str, padrao: int) -> int:
-    valor = (_env(nome.removeprefix("GANDALF_")) if nome.startswith("GANDALF_") else os.getenv(nome, "")).strip()
-    return int(valor) if valor else padrao
+def _int(name: str, default: int) -> int:
+    value = _env(name)
+    return int(value) if value else default
+
+
+def _language(value: str) -> str:
+    """Accepts "pt", "pt-br", "pt_BR"… and falls back to English."""
+    value = value.strip().replace("_", "-").lower()
+    if value.startswith("pt"):
+        return "pt-BR"
+    return "en"
+
+
+# Default Kokoro voice per language. Gandalf in Portuguese mixes the older Brazilian voice with a
+# deep British one; in English, a deep British voice.
+DEFAULT_VOICE = {"pt-BR": "pm_santa:0.5+bm_lewis:0.5", "en": "bm_lewis"}
 
 
 @lru_cache
@@ -52,25 +69,27 @@ def get_settings() -> Settings:
     vault = Path(os.getenv("VAULT_PATH") or REPO_ROOT / "vault")
     if not vault.is_absolute():
         vault = (REPO_ROOT / vault).resolve()
+    language = _language(_env("LANGUAGE") or "en")
     return Settings(
         vault_path=vault,
         host=os.getenv("BRIDGE_HOST", "127.0.0.1"),
-        port=_int("BRIDGE_PORT", 8787),
+        port=int(os.getenv("BRIDGE_PORT") or 8787),
         token=os.getenv("BRIDGE_TOKEN", ""),
         timezone=os.getenv("TZ_NAME", "America/Sao_Paulo"),
+        language=language,
         claude_bin=os.getenv("CLAUDE_BIN", "").strip(),
         tier2_model=_env("TIER2_MODEL") or "haiku",
         tier3_model=_env("TIER3_MODEL"),
         tier3_timeout_min=float(_env("TIER3_TIMEOUT_MIN") or 20),
-        tier3_max_simultaneas=_int("GANDALF_TIER3_MAX_SIMULTANEAS", 2),
-        limite_diario_chamadas=_int("GANDALF_LIMITE_DIARIO_CHAMADAS", 40),
-        dados_path=Path(os.getenv("LIFEOS_DADOS") or REPO_ROOT / "bridge" / "dados"),
-        efemero_horas=float(_env("EFEMERO_HORAS") or 48),
-        whisper_modelo=_env("WHISPER_MODELO") or "medium",
-        # Gandalf: mistura da voz brasileira mais velha com uma britânica grave, um pouco mais devagar.
-        voz_tts=_env("VOZ") or "pm_santa:0.5+bm_lewis:0.5",
-        voz_velocidade=float(_env("VOZ_VELOCIDADE") or 0.9),
-        # Contato no token VAPID (exigido pelos serviços de push; não precisa ser real).
-        push_contato=os.getenv("PUSH_CONTATO", "").strip() or "mailto:lifeos@users.noreply.github.com",
-        agendar_modelo=_env("AGENDAR_MODELO") or "haiku",
+        tier3_max_concurrent=_int("TIER3_MAX_CONCURRENT", 2),
+        daily_call_limit=_int("DAILY_CALL_LIMIT", 40),
+        data_path=Path(_env("DATA_DIR") or REPO_ROOT / "bridge" / "data"),
+        ephemeral_hours=float(_env("EPHEMERAL_HOURS") or 48),
+        whisper_model=_env("WHISPER_MODEL") or "medium",
+        tts_voice=_env("VOICE") or DEFAULT_VOICE[language],
+        # Gandalf speaks a little slower than the default.
+        voice_speed=float(_env("VOICE_SPEED") or 0.9),
+        # Contact in the VAPID token (required by push services; does not need to be real).
+        push_contact=os.getenv("PUSH_CONTACT", "").strip() or "mailto:gandalf@users.noreply.github.com",
+        schedule_event_model=_env("SCHEDULE_EVENT_MODEL") or "haiku",
     )
