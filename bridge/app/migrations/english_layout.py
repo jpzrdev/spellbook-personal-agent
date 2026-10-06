@@ -289,21 +289,21 @@ def _merge_move(vault: Path, src: Path, dst: Path, plan: Plan, apply: bool = Tru
 
 
 def migrate_vault(vault: Path, plan: Plan) -> None:
-    # 1) skills: an untouched template copy becomes the new template skill; edited ones are renamed and rewritten
+    # 1) skills: an untouched template copy is removed (the native skill in skills/ replaces it); edited ones are
+    #    renamed and rewritten (app.migrations.vault_skills then moves them out of the vault)
     skills_dir = vault / ".claude" / "skills"
     if skills_dir.is_dir():
         for folder in sorted(p for p in skills_dir.iterdir() if p.is_dir() and p.name in SKILLS):
             new = skills_dir / SKILLS[folder.name]
             skill_md = folder / "SKILL.md"
-            template_skill = TEMPLATE / ".claude" / "skills" / SKILLS[folder.name]
+            template_skill = get_settings().skills_path / SKILLS[folder.name]
             pristine = skill_md.is_file() and OLD_TEMPLATE_SKILLS.get(sha1(skill_md)) == folder.name
             if new.exists() and not _is_template_copy(vault, new):
                 plan.warn(f"skill {new.name} already exists; left {folder.relative_to(vault).as_posix()} untouched")
                 continue
             if pristine and template_skill.is_dir():
-                plan.do(f"skill {folder.name} → {new.name} (untouched template copy: replaced by the new template)",
-                        lambda f=folder, n=new, t=template_skill: (shutil.rmtree(f), shutil.rmtree(n, ignore_errors=True),
-                                                                   shutil.copytree(t, n)))
+                plan.do(f"skill {folder.name} removed (untouched template copy: skills/{new.name} replaces it)",
+                        lambda f=folder, n=new: (shutil.rmtree(f), shutil.rmtree(n, ignore_errors=True)))
             else:
                 def rename_skill(f=folder, n=new):
                     shutil.rmtree(n, ignore_errors=True)  # an untouched template copy, if setup_vault added one
@@ -313,7 +313,7 @@ def migrate_vault(vault: Path, plan: Plan) -> None:
                         md.write_text(rewrite_note(md.read_text(encoding="utf-8"), is_skill=True), encoding="utf-8", newline="")
                 plan.do(f"skill {folder.name} → {new.name} (edited: renamed, frontmatter and paths rewritten)", rename_skill)
                 if not template_skill.is_dir():
-                    plan.warn(f"skill {folder.name} is not in the template; its instructions may still mention old field names")
+                    plan.warn(f"skill {folder.name} is not a native skill; its instructions may still mention old field names")
 
     # 2) vault CLAUDE.md
     claude_md = vault / "CLAUDE.md"
@@ -506,7 +506,8 @@ def main(argv: list[str] | None = None) -> int:
     for warning in plan.warnings:
         print(f"  ! {warning}")
     if args.apply and plan.steps:
-        print("Then run `uv run python -m app.setup_vault` to add what the new template has.")
+        print("Then run `uv run python -m app.setup_vault` to add what the new template has, "
+              "and `uv run python -m app.migrations.vault_skills` to move your skills out of the vault.")
     return 0
 
 

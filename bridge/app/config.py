@@ -17,6 +17,8 @@ LANGUAGES = ("en", "pt-BR")
 @dataclass(frozen=True)
 class Settings:
     vault_path: Path
+    # Skills (skills/<name>/SKILL.md): part of the project, not the vault. Gandalf can create and edit them.
+    skills_path: Path
     host: str
     port: int
     token: str
@@ -72,6 +74,7 @@ def get_settings() -> Settings:
     language = _language(_env("LANGUAGE") or "en")
     return Settings(
         vault_path=vault,
+        skills_path=Path(_env("SKILLS_DIR") or REPO_ROOT / "skills"),
         host=os.getenv("BRIDGE_HOST", "127.0.0.1"),
         port=int(os.getenv("BRIDGE_PORT") or 8787),
         token=os.getenv("BRIDGE_TOKEN", ""),

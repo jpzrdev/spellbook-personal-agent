@@ -277,12 +277,12 @@ def _last_by_intent(vault: Path, prefix: str) -> dict[str, dict]:
 @app.get("/skills")
 def skills(vault: Path = Depends(get_vault)) -> list[dict]:
     last = _last_by_intent(vault, "skill:")
-    return [{**asdict(s), "last_run": last.get(s.name)} for s in list_skills(vault)]
+    return [{**asdict(s), "last_run": last.get(s.name)} for s in list_skills()]
 
 
 @app.post("/skills/{name}/run", status_code=201)
 def run_skill(name: str, e: SkillRun, vault: Path = Depends(get_vault)) -> dict:
-    if not has_skill(vault, name):
+    if not has_skill(name):
         raise HTTPException(404, f"skill not found: {name}")
     task = e.instruction.strip() or "Run this skill with its defaults."
     s = tier3.manager(vault).create(task, request=f"Skill /{name}" + (f": {e.instruction.strip()}" if e.instruction.strip() else ""), skill=name)
@@ -635,7 +635,7 @@ async def study_material(
         + "\n".join(f"- `{s}`" for s in saved)
         + f"\n{target}"
     )
-    skill = "structure-material" if has_skill(vault, "structure-material") else None
+    skill = "structure-material" if has_skill("structure-material") else None
     s = tier3.manager(vault).create(task, request=f"Material for {subject}: {', '.join(x.split('/')[-1] for x in saved)[:120]}", skill=skill)
     return {"sources": saved, "session": s.summary()}
 
@@ -643,7 +643,7 @@ async def study_material(
 @app.post("/studies/generate", status_code=201)
 def generate_study(p: StudyRequest, vault: Path = Depends(get_vault)) -> dict:
     """Generates material with Claude Code (prepare-studies skill): a new subject, a new topic or deepening a topic."""
-    skill = "prepare-studies" if has_skill(vault, "prepare-studies") else None
+    skill = "prepare-studies" if has_skill("prepare-studies") else None
     if p.kind == "deepen":
         if not p.note or not p.note.startswith("wiki/studies/") or ".." in p.note or not (vault / p.note).is_file():
             raise HTTPException(400, "give the note (wiki/studies/...)")
@@ -1030,8 +1030,8 @@ def confirm_proposal(proposal_id: str, c: Confirmation, vault: Path = Depends(ge
     p = _proposal_or_404(proposal_id)
     if p.status == "confirmed":
         raise HTTPException(409, "this proposal was already confirmed")
-    if not has_skill(vault, "schedule-event"):
-        raise HTTPException(503, "schedule-event skill not found in the vault (run the vault setup)")
+    if not has_skill("schedule-event"):
+        raise HTTPException(503, "schedule-event skill not found in skills/")
     try:
         event = proposals.normalize(c.event.model_dump(mode="json") if c.event else asdict(p.event))
     except proposals.InvalidProposal as e:

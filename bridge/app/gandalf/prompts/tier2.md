@@ -52,4 +52,4 @@ In "query", include what the context says about the user that changes the answer
 {"type": "task", "text": "...", "due": "YYYY-MM-DD"}
 {"type": "note", "text": "..."}
 
-When escalating, rewrite the request as a clear, self-contained task for Claude Code, which will run with the vault as its working directory and with the rules in vault/CLAUDE.md. If one of the skills listed in the context fits the request exactly, give its name in "skill"; otherwise use null. Never escalate to create calendar events: that is "capture" with type "event".
+When escalating, rewrite the request as a clear, self-contained task for Claude Code, which will run with the vault as its working directory and with the rules in vault/CLAUDE.md. Claude Code sees every skill listed in the context and picks the right ones by itself, so "skill" is optional: give a name only when one skill clearly is the whole request; when in doubt, use null. Asking to create, change or improve a skill is an escalation with "skill": null (Claude Code writes skills). Never escalate to create calendar events: that is "capture" with type "event".

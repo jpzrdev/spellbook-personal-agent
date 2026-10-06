@@ -69,7 +69,7 @@ export function Skills() {
         onSuccess: (session) => {
           setChosen(null)
           setInstruction('')
-          toast('success', `/${chosen.name} started`)
+          toast('success', `${chosen.name} started`)
           navigate(`/terminals?session=${session.id}`)
         },
         onError: (err) => toast('error', err.message),
@@ -82,7 +82,8 @@ export function Skills() {
       <header>
         <h1 className="text-4xl font-semibold tracking-tight">Skills</h1>
         <p className="mt-1 text-ink-muted">
-          Claude Code recipes in <code className="font-mono text-sm">vault/.claude/skills/</code>. Each run opens a session in Terminals.
+          Claude Code recipes in the project's <code className="font-mono text-sm">skills/</code> folder. Gandalf picks them by itself
+          and can create or edit them (just ask). Each run opens a session in Terminals.
         </p>
       </header>
       {isPending ? (
@@ -90,7 +91,7 @@ export function Skills() {
       ) : error ? (
         <p role="alert" className="font-semibold text-danger">{error.message}</p>
       ) : skills.length === 0 ? (
-        <EmptyState icon={<Sparkles />} title="No skills in the vault" description="Run the vault setup to copy the starter skills." />
+        <EmptyState icon={<Sparkles />} title="No skills found" description="The skills/ folder at the project root is missing or empty." />
       ) : (
         <BentoGrid className="lg:grid-cols-3">
           {skills.map((s) => (
@@ -104,7 +105,7 @@ export function Skills() {
       <Modal
         open={chosen !== null}
         onClose={() => setChosen(null)}
-        title={`Run /${chosen?.name ?? ''}`}
+        title={`Run ${chosen?.name ?? ''}`}
         icon={chosen ? (LOOK[chosen.name] ?? DEFAULT).icon : undefined}
         color={chosen ? (LOOK[chosen.name] ?? DEFAULT).color : undefined}
         footer={
