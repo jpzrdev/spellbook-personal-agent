@@ -29,7 +29,7 @@ def test_receipts_costs_and_reading(client):
 def test_vault_tree_and_note(client):
     tree = client.get("/vault/tree").json()
     names = [n["name"] for n in tree]
-    assert names[:3] == [".claude", "life", "output"]
+    assert names[:3] == ["life", "output", "raw"]
     assert ".git" not in names
     life = next(n for n in tree if n["name"] == "life")
     assert any(f["path"] == "life/tasks.md" for f in life["children"])
