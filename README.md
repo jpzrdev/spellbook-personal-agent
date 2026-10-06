@@ -11,6 +11,7 @@ A personal system for your agenda, studies, routines and knowledge: a web HUD, a
   1. **Rules** (no AI): tasks, reminders, the day's agenda, answered straight from the vault (in English and Portuguese).
   2. **Haiku** through Claude Code: triage and quick answers.
   3. **Headless Claude Code**: long tasks (research, summaries, studies) with skills and restricted tools.
+- **Skills** (`skills/`): the recipes Gandalf uses. The native ones ship with the project; Gandalf picks them by itself and can create or edit skills when you ask (yours stay out of git).
 - **Vault** (`vault-template/`): Markdown notes (Obsidian) that act as memory: wiki, tasks, routines, journal and a receipt for every request.
 - **Routines** scheduled by cron (defined in vault notes), push notifications, offline voice (Whisper + Kokoro) and Google Calendar and Gmail connectors.
 

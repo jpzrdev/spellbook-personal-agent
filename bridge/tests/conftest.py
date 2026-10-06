@@ -12,6 +12,7 @@ from app.gandalf import claude_cli, tier3
 from app.routines import scheduler
 
 FIXTURE = Path(__file__).parent / "fixtures" / "vault"
+SKILLS_FIXTURE = Path(__file__).parent / "fixtures" / "skills"
 TZ = ZoneInfo("America/Sao_Paulo")
 # Saturday, October 3, 2026, 09:15.
 NOW = datetime(2026, 10, 3, 9, 15, 12, tzinfo=TZ)
@@ -21,8 +22,10 @@ FAKE_CLAUDE = Path(__file__).parent / "fake_claude.py"
 
 @pytest.fixture(autouse=True)
 def fake_claude(monkeypatch, tmp_path):
-    """No test calls the real Claude Code or writes to bridge/data/. The assistant speaks English by default."""
+    """No test calls the real Claude Code or writes to bridge/data/ or skills/. The assistant speaks English by default."""
     monkeypatch.setenv("GANDALF_DATA_DIR", str(tmp_path / "data"))
+    shutil.copytree(SKILLS_FIXTURE, tmp_path / "skills")
+    monkeypatch.setenv("GANDALF_SKILLS_DIR", str(tmp_path / "skills"))
     monkeypatch.setenv("GANDALF_VOICE_PRELOAD", "0")
     monkeypatch.setenv("GANDALF_LANGUAGE", "en")
     monkeypatch.setenv("TZ_NAME", "America/Sao_Paulo")

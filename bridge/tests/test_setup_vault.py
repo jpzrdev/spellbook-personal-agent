@@ -1,3 +1,6 @@
+import re
+
+from app.config import REPO_ROOT
 from app.setup_vault import TEMPLATE, copy_template
 
 
@@ -19,7 +22,12 @@ def test_copy_does_not_overwrite(tmp_path):
     assert len(created) == 1
 
 
-def test_template_has_the_skills_the_bridge_calls():
-    """The Bridge calls these skills by name; the template has to ship them."""
-    skills = {p.parent.name for p in (TEMPLATE / ".claude" / "skills").glob("*/SKILL.md")}
-    assert {"schedule-event", "research", "save-research", "structure-material", "prepare-studies"} <= skills
+def test_the_project_ships_the_skills_the_bridge_calls():
+    """The Bridge calls these skills by name: they live in skills/ (versioned), not in the vault template."""
+    skills = REPO_ROOT / "skills"
+    called = {"schedule-event", "research", "save-research", "structure-material", "prepare-studies"}
+    # native = what skills/.gitignore keeps in git (the user's own skills stay out)
+    native = set(re.findall(r"^!/([^/]+)/$", (skills / ".gitignore").read_text(encoding="utf-8"), re.M))
+    assert called <= native
+    assert all((skills / n / "SKILL.md").is_file() for n in native)
+    assert not (TEMPLATE / ".claude" / "skills").exists()

@@ -41,11 +41,11 @@ def build_context(vault: Path, now: datetime) -> str:
         lines = [f"- `{x['slug']}`: {x['title']} ({x['kind']}, updated {x['updated'] or '?'})" for x in topics[:30]]
         parts.append("## Library (research and plans already saved)\n" + "\n".join(lines))
 
-    skills = list_skills(vault)
+    skills = list_skills()
     if skills:
         lines = [f"- {s.name}: {s.description}" for s in skills]
-        parts.append("## Skills available in Claude Code\n" + "\n".join(lines))
+        parts.append("## Skills available\n" + "\n".join(lines))
     else:
-        parts.append("## Skills available in Claude Code\n(none)")
+        parts.append("## Skills available\n(none)")
 
     return "\n\n".join(parts)

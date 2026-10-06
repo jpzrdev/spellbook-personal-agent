@@ -5,6 +5,7 @@ directory, in its own thread. Events are kept in a buffer (for whoever connects 
 forwarded to the WebSockets. There is a limit of concurrent sessions; the rest wait in a queue.
 """
 
+import re
 import threading
 import time
 import uuid
@@ -18,7 +19,7 @@ from app.config import get_settings
 from app.events import Channel, system_events
 from app.gandalf import claude_cli
 from app.receipts import Receipt, write_receipt
-from app.skills.catalog import get_skill
+from app.skills.catalog import get_skill, plugin_dir, skills_dir
 
 # `(**)` pins each tool to the vault (cwd): without the pattern, Claude Code reads and writes outside it
 # (e.g. the project's .env). Tested with the real CLI.
@@ -121,6 +122,28 @@ def _skill_tools(tools: list[str], writes: bool) -> list[str]:
     return out
 
 
+def rule_path(path: Path) -> str:
+    """An absolute path in Claude Code's permission-rule form (`//c/Users/...`, `//home/...`).
+    Without the leading `//` the rule would be relative to the working directory (the vault)."""
+    p = path.resolve().as_posix()
+    if re.match(r"^[A-Za-z]:/", p):
+        p = f"/{p[0].lower()}{p[2:]}"
+    return "/" + p
+
+
+def skills_instruction() -> str:
+    folder = skills_dir().resolve()
+    return (
+        f"Gandalf's skills live in {folder} (one folder per skill, with a SKILL.md), outside the vault. "
+        "When the user asks to create or change a skill, write it there: a short lowercase-hyphenated folder name, "
+        "and a SKILL.md with YAML frontmatter (`name` equal to the folder, a one-line `description` saying when to use it; "
+        "optional: `allowed-tools`, `output: ephemeral | research | library`, `title`) followed by the instructions in markdown. "
+        "Never use the vault's .claude/ folder for skills. The skills you see as `gandalf:<name>` are a copy of that "
+        "folder made when the session starts: never edit the copy; changes apply from the next session "
+        "(in this one, read the SKILL.md directly)."
+    )
+
+
 def language_instruction() -> str:
     name = locales.current().NAME
     return (
@@ -169,7 +192,7 @@ class Manager:
         research: dict | None = None,
     ) -> Session:
         previous = self.get(resumed_from) if resumed_from else None
-        sk = get_skill(self.vault, skill) if skill else None
+        sk = get_skill(skill) if skill else None
         if sk and sk.output != "vault":
             output = sk.output  # the skill decides: emails never go to the vault; research never sees the vault
         s = Session(
@@ -245,11 +268,18 @@ class Manager:
             "research": RESEARCH_TOOLS,
             "library": LIBRARY_TOOLS,
         }.get(s.output, ALLOWED_TOOLS)
-        skill = get_skill(self.vault, s.skill) if s.skill else None
+        skill = get_skill(s.skill) if s.skill else None
         if skill and skill.tools:
             extras = _skill_tools(skill.tools, writes=s.output == "vault")
             if extras:
                 tools += "," + ",".join(extras)
+        system = language_instruction()
+        writes_skills = s.output == "vault" and skills_dir().is_dir()
+        if writes_skills:
+            # Gandalf can create and edit skills. (Edit rules cover every file-editing tool, Write included.)
+            folder = rule_path(skills_dir())
+            tools += f",Read({folder}/**),Glob({folder}/**),Edit({folder}/**)"
+            system += "\n\n" + skills_instruction()
         args = [
             # "default" + a closed list: only what is in --allowedTools goes through. ("acceptEdits" approved
             # any edit in the vault, even in "read-only" sessions.)
@@ -257,8 +287,15 @@ class Manager:
             "--allowedTools", tools,
             # Nobody is there to approve: whatever would ask for permission is denied (it doesn't hang).
             "--permission-prompts", "none",
-            "--append-system-prompt", language_instruction(),
+            "--append-system-prompt", system,
         ]
+        # Skills (skills/) loaded as a plugin: Claude Code sees all of them and picks the one that fits by itself;
+        # an explicit run calls /gandalf:<name>. It is a copy: Claude Code doesn't let a session edit loaded skills.
+        plugin = plugin_dir()
+        if plugin:
+            args += ["--plugin-dir", str(plugin)]
+        if writes_skills:
+            args += ["--add-dir", str(skills_dir().resolve())]
         # The vault's MCPs (vault/.mcp.json) loaded explicitly: in -p mode Claude Code
         # doesn't ask whether to trust the project's servers.
         mcp = self.vault / ".mcp.json"
@@ -271,7 +308,8 @@ class Manager:
         return args
 
     def _prompt(self, s: Session) -> str:
-        prompt = f"/{s.skill} {s.task}" if s.skill else s.task
+        skill = get_skill(s.skill) if s.skill else None
+        prompt = f"{skill.command} {s.task}" if skill else s.task
         if s.output == "ephemeral":
             return prompt + EPHEMERAL_INSTRUCTION
         return prompt + RESEARCH_INSTRUCTION if s.output == "research" else prompt
@@ -373,7 +411,7 @@ class Manager:
         if s.output in ("ephemeral", "research"):
             # The content goes to ephemeral storage (HUD), never to the receipt/vault.
             if s.status == "ok" and s.result.strip():
-                sk = get_skill(self.vault, s.skill) if s.skill else None
+                sk = get_skill(s.skill) if s.skill else None
                 title = s.request.removeprefix("Routine: ") if s.routine else ((sk.title if sk else None) or s.request)
                 if s.output == "research" and s.research:
                     title = f"Research: {s.research.get('topic') or s.request[:60]}"

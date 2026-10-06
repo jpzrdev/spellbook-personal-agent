@@ -1,3 +1,4 @@
+import json
 import time
 from pathlib import Path
 
@@ -48,10 +49,37 @@ def test_ephemeral_session_runs_read_only_plus_the_skill_tools(vault):
     s = tier3.Session(id="x", task="t", request="p", source="routine", created=None, skill="email-summary", output="ephemeral")
     args = m._args(s)
     assert args[args.index("--allowedTools") + 1] == "Read(**),Glob(**),Grep(**),mcp__gmail,Read(**)"
-    assert m._prompt(s).startswith("/email-summary t") and "ephemeral" in m._prompt(s)
+    assert m._prompt(s).startswith("/gandalf:email-summary t") and "ephemeral" in m._prompt(s)
+
+    assert "--add-dir" not in args  # only sessions that write to the vault can edit skills
 
     normal = tier3.Session(id="y", task="t", request="p", source="hud", created=None)
     assert "Write" in m._args(normal)[m._args(normal).index("--allowedTools") + 1]
+
+
+def test_tier3_loads_the_skills_as_a_plugin_and_can_edit_them(vault, tmp_path):
+    skills = tmp_path / "skills"
+    (skills / ".gitignore").write_text("/*/\n", encoding="utf-8")
+    m = tier3.Manager(vault)
+    args = m._args(tier3.Session(id="x", task="t", request="p", source="hud", created=None))
+    plugin = Path(args[args.index("--plugin-dir") + 1])
+    manifest = json.loads((plugin / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+    assert manifest["name"] == "gandalf"
+    assert (plugin / "skills" / "email-summary" / "SKILL.md").read_bytes() == (skills / "email-summary" / "SKILL.md").read_bytes()
+    assert not (plugin / "skills" / ".gitignore").exists()
+    # Gandalf edits the source (skills/), never the copy Claude Code loaded.
+    tools = args[args.index("--allowedTools") + 1]
+    assert f"Edit({tier3.rule_path(skills)}/**)" in tools and tier3.rule_path(skills).startswith("//")
+    assert args[args.index("--add-dir") + 1] == str(skills.resolve())
+    assert str(skills.resolve()) in args[args.index("--append-system-prompt") + 1]
+
+    # Same contents → same copy; a changed skill → a new copy (the old one stays for running sessions).
+    assert m._args(tier3.Session(id="y", task="t", request="p", source="hud", created=None))[args.index("--plugin-dir") + 1] == str(plugin)
+    (skills / "new-one").mkdir()
+    (skills / "new-one" / "SKILL.md").write_text("---\nname: new-one\ndescription: d\n---\nDo it.\n", encoding="utf-8")
+    args2 = m._args(tier3.Session(id="z", task="t", request="p", source="hud", created=None))
+    new = Path(args2[args2.index("--plugin-dir") + 1])
+    assert new != plugin and plugin.is_dir() and (new / "skills" / "new-one" / "SKILL.md").is_file()
 
 
 def test_tier3_gets_the_language_instruction(vault, pt_br):
@@ -68,7 +96,7 @@ def test_the_vault_mcp_is_loaded_explicitly(vault):
 def test_allowed_tools_formats(vault):
     assert _tools("Read, Bash(git *) mcp__gmail") == ["Read", "Bash(git *)", "mcp__gmail"]
     assert _tools(["mcp__google_calendar"]) == ["mcp__google_calendar"]
-    assert get_skill(vault, "email-summary").tools == ["mcp__gmail", "Read"]
+    assert get_skill("email-summary").tools == ["mcp__gmail", "Read"]
 
 
 def test_save_and_discard_ephemeral(client, vault):
