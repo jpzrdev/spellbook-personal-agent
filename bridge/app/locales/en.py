@@ -190,6 +190,8 @@ MESSAGES = {
     "capture.failed": "⚠️ I couldn't save one item ({type}): {error}.",
     "capture.nothing": "Nothing to save.",
     "capture.no_devices": "\n\n_Turn on notifications on the Today screen to get the alert on your phone._",
+    "learn.profile": "🧠 I'll remember: {fact}",
+    "learn.raw": "🧠 Kept for the wiki: {fact} (`{path}`)",
     "router.not_understood": (
         "That request isn't among my quick spells, friend. The ones I know by heart: "
         "\"what do I have today/tomorrow?\", \"my priorities\", \"my tasks\", "
@@ -203,6 +205,12 @@ MESSAGES = {
     "speech.details_on_screen": "The details are on the screen.",
     # Written into memory files created by the code.
     "file.tasks_header": "# Tasks\n",
+    "file.learned_header": (
+        "# Learned\n\n"
+        "Facts Gandalf picked up from your conversations, newest at the bottom. Edit or delete any line; "
+        "the wiki check (lint) folds them into the other notes.\n"
+    ),
+    "file.learned_index_line": "- [[wiki/about-me/learned|Learned]]: facts Gandalf picked up from conversations.",
     "file.reminders_header": (
         "# Reminders\n\n"
         "Gandalf's alerts (phone/PC notification). You can edit by hand:\n"

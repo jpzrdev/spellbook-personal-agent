@@ -182,6 +182,8 @@ MESSAGES = {
     "capture.failed": "⚠️ Não consegui registrar um item ({type}): {error}.",
     "capture.nothing": "Nada para registrar.",
     "capture.no_devices": "\n\n_Ative as notificações na tela Today para receber o aviso no celular._",
+    "learn.profile": "🧠 Vou lembrar: {fact}",
+    "learn.raw": "🧠 Guardado para o wiki: {fact} (`{path}`)",
     "router.not_understood": (
         "Esse pedido não está nos meus feitiços rápidos, amigo. Os que conheço de cor: "
         "\"o que tenho hoje/amanhã?\", \"minhas prioridades\", \"minhas tarefas\", "
@@ -195,6 +197,12 @@ MESSAGES = {
     "speech.details_on_screen": "Os detalhes estão na tela.",
     # Written into memory files created by the code.
     "file.tasks_header": "# Tarefas\n",
+    "file.learned_header": (
+        "# Aprendido\n\n"
+        "Fatos que o Gandalf captou nas conversas, os mais novos no fim. Edite ou apague qualquer linha; "
+        "a checagem do wiki (lint) os incorpora às outras notas.\n"
+    ),
+    "file.learned_index_line": "- [[wiki/about-me/learned|Aprendido]]: fatos que o Gandalf captou nas conversas.",
     "file.reminders_header": (
         "# Lembretes\n\n"
         "Avisos do Gandalf (notificação no celular/PC). Pode editar à mão:\n"

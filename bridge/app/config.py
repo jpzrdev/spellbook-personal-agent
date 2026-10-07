@@ -31,6 +31,8 @@ class Settings:
     tier3_timeout_min: float
     tier3_max_concurrent: int
     daily_call_limit: int
+    # Tier 2 keeps durable facts the user mentions in passing (wiki/about-me/learned.md or raw/)
+    auto_learn: bool
     # Ephemeral outputs: outside the memory and git
     data_path: Path
     ephemeral_hours: float
@@ -96,6 +98,7 @@ def get_settings() -> Settings:
         tier3_timeout_min=float(_env("TIER3_TIMEOUT_MIN") or 20),
         tier3_max_concurrent=_int("TIER3_MAX_CONCURRENT", 2),
         daily_call_limit=_int("DAILY_CALL_LIMIT", 40),
+        auto_learn=_env("AUTO_LEARN").lower() not in ("0", "false", "no", "off"),
         data_path=Path(_env("DATA_DIR") or REPO_ROOT / "bridge" / "data"),
         ephemeral_hours=float(_env("EPHEMERAL_HOURS") or 48),
         whisper_model=_env("WHISPER_MODEL") or "medium",

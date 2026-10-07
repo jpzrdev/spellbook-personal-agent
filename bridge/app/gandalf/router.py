@@ -16,6 +16,7 @@ from app import clock, library
 from app.config import get_settings
 from app.gandalf import tier1, tier2, tier3, triage
 from app.locales import t
+from app.memory import learn
 from app.receipts import RECEIPTS, Receipt, write_receipt
 
 UPDATE_CONTEXT = (
@@ -98,6 +99,11 @@ def ask(
 
     # ---------- Tier 2 ----------
     d = tier2.decide(memory, text, now, previous, note)
+    # Learning is a side effect of any action: it goes before so the reply can say what was kept.
+    learned = learn.save(memory, d.learn, now, source, text) if d.learn and get_settings().auto_learn else []
+    learned_text = learn.describe(learned)
+    learned_data = {"learned": [x.__dict__ for x in learned]} if learned else {}
+
     if d.action == "escalate":
         s = manager.create(
             d.task + (f"\n\n(The question is about the note `{note[0]}`.)" if note else ""),
@@ -106,10 +112,10 @@ def ask(
             skill=d.skill,
             previous_tokens=(d.input_tokens, d.output_tokens, d.cost_usd),
         )
-        reason = d.reason or t("router.escalated")
+        reason = (d.reason or t("router.escalated")) + learned_text
         return GandalfReply(
             None, 3, f"skill:{d.skill}" if d.skill else "claude_code", True, reason, ms(),
-            {"task": d.task, "skill": d.skill}, session_id=s.id,
+            {"task": d.task, "skill": d.skill, **learned_data}, session_id=s.id,
         )
 
     if d.action == "research":
@@ -130,11 +136,14 @@ def ask(
             previous_tokens=(d.input_tokens, d.output_tokens, d.cost_usd),
         )
         return GandalfReply(
-            None, 3, "research", True, t("router.research", topic=p["topic"]), ms(), {"research": {**p}}, session_id=s.id,
+            None, 3, "research", True, t("router.research", topic=p["topic"]) + learned_text, ms(),
+            {"research": {**p}, **learned_data}, session_id=s.id,
         )
 
     if d.action == "capture":
         reply, data = triage.execute(memory, clock.tz(), d.items, now, text, source)
+        reply += learned_text
+        data |= learned_data
         duration = ms()
         rid, _ = write_receipt(
             memory,
@@ -147,14 +156,16 @@ def ask(
         )
         return GandalfReply(rid, 2, "capture", True, reply, duration, data)
 
+    reply = d.reply + learned_text
     duration = ms()
     rid, _ = write_receipt(
         memory,
         Receipt(
-            text, d.reply, source, 2, now, duration,
+            text, reply, source, 2, now, duration,
             intent="answer", model=d.model,
             input_tokens=d.input_tokens, output_tokens=d.output_tokens,
             estimated_cost_usd=round(d.cost_usd, 6),
         ),
     )
-    return GandalfReply(rid, 2, "answer", True, d.reply, duration, {"warnings": d.warnings} if d.warnings else {})
+    data = ({"warnings": d.warnings} if d.warnings else {}) | learned_data
+    return GandalfReply(rid, 2, "answer", True, reply, duration, data)

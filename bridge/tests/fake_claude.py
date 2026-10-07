@@ -1,7 +1,8 @@
 """Fake Claude Code for tests: imitates `claude -p --output-format json|stream-json`.
 
 The behavior comes from the request text (stdin):
-- Tier 2 (json): "ESCALATE" → decides to escalate; "INVALID" → text that isn't JSON; otherwise it answers.
+- Tier 2 (json): "ESCALATE" → decides to escalate; "INVALID" → text that isn't JSON; "LEARN" → answers and
+  learns facts (one profile, one raw, one secret); otherwise it answers.
 - Quiz (json): `<quiz_generate count="N" type="T">` → N questions from the request's first topic;
   `<quiz_grade>` → "correct" if the user's answer contains "rate", otherwise "wrong".
 - Tier 3 (stream-json): writes a file in output/ and ends; "SLOW" → stalls for 30 s;
@@ -68,6 +69,13 @@ def main() -> None:
                 {"type": "task", "text": "Buy a present", "due": "2026-10-09"},
                 {"type": "reminder", "text": "Call Arthur", "when": "2026-10-03T18:00"},
                 {"type": "reminder", "text": "Take medicine", "time": "22:00", "weekdays": []},
+            ]}, session_id, usage)
+        elif "LEARN" in prompt:
+            result({"action": "answer", "reply": "Good luck with the exam!", "learn": [
+                {"fact": "Is preparing for the AWS exam, planned for 2026-12-05", "where": "profile",
+                 "replaces": "Is preparing for the Azure exam"},
+                {"fact": "The Atlas project uses Postgres and runs on Fly.io", "where": "raw"},
+                {"fact": "Bank password is hunter2", "where": "profile"},
             ]}, session_id, usage)
         elif "INVALID" in prompt:
             emit({"type": "result", "subtype": "success", "is_error": False, "result": "Hello! I don't speak JSON.",

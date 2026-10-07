@@ -38,6 +38,16 @@ ITEM = {
     "required": ["type"],
 }
 
+LEARN_ITEM = {
+    "type": "object",
+    "properties": {
+        "fact": {"type": "string"},
+        "where": {"type": "string", "enum": ["profile", "raw"]},
+        "replaces": {"type": ["string", "null"]},
+    },
+    "required": ["fact", "where"],
+}
+
 SCHEMA = {
     "type": "object",
     "properties": {
@@ -51,6 +61,7 @@ SCHEMA = {
         "query": {"type": "string"},
         "kind": {"type": "string", "enum": ["research", "plan"]},
         "update": {"type": ["string", "null"]},
+        "learn": {"type": "array", "items": LEARN_ITEM},
     },
     "required": ["action"],
 }
@@ -65,6 +76,7 @@ class Decision:
     skill: str | None = None
     items: list[dict] = field(default_factory=list)
     research: dict | None = None  # {topic, query, kind, update}
+    learn: list[dict] = field(default_factory=list)  # facts to keep, alongside any action (app.memory.learn)
     model: str | None = None
     input_tokens: int = 0
     output_tokens: int = 0
@@ -107,7 +119,7 @@ def language_instruction() -> str:
     return (
         "## Language\n\n"
         f"The user speaks {name}. Write everything the user will read in {name}: `reply`, `reason`, "
-        "item texts and titles, and the research `topic`. Keep the JSON keys and enum values exactly as specified."
+        "item texts and titles, the research `topic` and the `learn` facts. Keep the JSON keys and enum values exactly as specified."
     )
 
 
@@ -167,6 +179,7 @@ def decide(memory: Path, request: str, now: datetime, previous: list[dict] | Non
                     "kind": "plan" if data.get("kind") == "plan" else "research",
                     "update": (str(data["update"]).strip() or None) if data.get("update") else None,
                 } if data["action"] == "research" else None,
+                learn=[x for x in data.get("learn") or [] if isinstance(x, dict)],
                 model=r.model,
                 input_tokens=total_in,
                 output_tokens=total_out,
