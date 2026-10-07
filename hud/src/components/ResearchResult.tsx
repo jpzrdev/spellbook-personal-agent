@@ -32,7 +32,7 @@ export function ResearchActions({ e, onDiscarded }: { e: Ephemeral; onDiscarded?
         ) : session && session.status !== 'queued' && session.status !== 'running' ? (
           <Badge color={SESSION_STATUS[session.status].color}>{SESSION_STATUS[session.status].text}</Badge>
         ) : (
-          <span className="text-ink-muted">organizing in the vault…</span>
+          <span className="text-ink-muted">organizing in the memory…</span>
         )}
         <Link to={`/terminals?session=${sessionId}`} className={cn('text-xs font-semibold text-ink-muted', focusRing)}>
           view session
@@ -55,7 +55,7 @@ export function ResearchActions({ e, onDiscarded }: { e: Ephemeral; onDiscarded?
           })
         }
       >
-        <Save className="size-3.5" aria-hidden /> {e.research?.slug ? 'Update in the Library' : 'Save to vault'}
+        <Save className="size-3.5" aria-hidden /> {e.research?.slug ? 'Update in the Library' : 'Save to memory'}
       </Button>
       <Button
         variant="ghost"

@@ -18,11 +18,11 @@ def _months(start: date, end: date) -> list[tuple[int, int]]:
     return months
 
 
-def read_receipts(vault: Path, start: date, end: date) -> list[dict]:
+def read_receipts(memory: Path, start: date, end: date) -> list[dict]:
     """Receipts between the dates (inclusive), oldest first."""
     items: list[dict] = []
     for year, month in _months(start, end):
-        folder = vault / RECEIPTS / f"{year:04d}" / f"{month:02d}"
+        folder = memory / RECEIPTS / f"{year:04d}" / f"{month:02d}"
         if not folder.is_dir():
             continue
         for path in sorted(folder.glob("*.md")):
@@ -58,7 +58,7 @@ def read_receipts(vault: Path, start: date, end: date) -> list[dict]:
                     "output_tokens": int(meta.get("output_tokens") or 0),
                     "estimated_cost_usd": float(meta.get("estimated_cost_usd") or 0),
                     "duration_ms": int(meta.get("duration_ms") or 0),
-                    "file": path.relative_to(vault).as_posix(),
+                    "file": path.relative_to(memory).as_posix(),
                     "request": request,
                 }
             )

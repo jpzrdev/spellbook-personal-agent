@@ -22,8 +22,8 @@ from watchdog.observers import Observer
 from app import clock, cron, push
 from app.config import get_settings
 from app.events import system_events
-from app.vault import reminders as store
-from app.vault.reminders import Reminder
+from app.memory import reminders as store
+from app.memory.reminders import Reminder
 
 log = logging.getLogger("gandalf.reminders")
 RECOVER_RECURRING = timedelta(hours=6)
@@ -82,8 +82,8 @@ class _Watcher(FileSystemEventHandler):
 
 
 class ReminderScheduler:
-    def __init__(self, vault: Path, tz: ZoneInfo):
-        self.vault = vault
+    def __init__(self, memory: Path, tz: ZoneInfo):
+        self.memory = memory
         self.tz = tz
         self._scheduler = BackgroundScheduler(
             timezone=tz, job_defaults={"coalesce": True, "misfire_grace_time": 3600, "max_instances": 1}
@@ -94,7 +94,7 @@ class ReminderScheduler:
     def start(self) -> None:
         self._scheduler.start()
         self.reload(recover=True)
-        folder = (self.vault / store.REMINDERS).parent
+        folder = (self.memory / store.REMINDERS).parent
         folder.mkdir(parents=True, exist_ok=True)
         self._observer = Observer()
         self._observer.schedule(_Watcher(self.reload), str(folder), recursive=False)
@@ -126,7 +126,7 @@ class ReminderScheduler:
                 if not job.id.startswith(ALERT):  # standalone alerts (pomodoro) don't come from the file
                     job.remove()
             state = _state()
-            for x in store.read(self.vault, self.tz):
+            for x in store.read(self.memory, self.tz):
                 if x.done:
                     continue
                 if x.when:
@@ -171,7 +171,7 @@ class ReminderScheduler:
     def fire(self, reminder_id: str, late_since: datetime | None = None) -> dict | None:
         """Alerts (push + open HUD) and closes a one-off reminder."""
         now = clock.now()
-        x = next((y for y in store.read(self.vault, self.tz) if y.id == reminder_id), None)
+        x = next((y for y in store.read(self.memory, self.tz) if y.id == reminder_id), None)
         if x is None or x.done:
             return None
         body = "Tap to open Gandalf."
@@ -186,7 +186,7 @@ class ReminderScheduler:
             _mark_state(x.id, now)
         else:
             try:
-                store.update(self.vault, self.tz, x.id, done=True, now=now)
+                store.update(self.memory, self.tz, x.id, done=True, now=now)
             except store.ReminderNotFound:
                 pass
         event = {"type": "reminder", "id": x.id, "text": x.text, "push": sent, "late": is_late}
@@ -199,18 +199,18 @@ _scheduler: ReminderScheduler | None = None
 _global_lock = threading.Lock()
 
 
-def scheduler(vault: Path) -> ReminderScheduler:
+def scheduler(memory: Path) -> ReminderScheduler:
     global _scheduler
     with _global_lock:
-        if _scheduler is None or _scheduler.vault != vault:
-            _scheduler = ReminderScheduler(vault, clock.tz())
+        if _scheduler is None or _scheduler.memory != memory:
+            _scheduler = ReminderScheduler(memory, clock.tz())
         return _scheduler
 
 
-def reload_if_running(vault: Path) -> None:
+def reload_if_running(memory: Path) -> None:
     """After a write by the Bridge (the watcher also catches it, but this is immediate)."""
     with _global_lock:
-        s = _scheduler if _scheduler and _scheduler.vault == vault and _scheduler._scheduler.running else None
+        s = _scheduler if _scheduler and _scheduler.memory == memory and _scheduler._scheduler.running else None
     if s:
         s.reload()
 

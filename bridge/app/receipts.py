@@ -7,7 +7,7 @@ from pathlib import Path
 import yaml
 from ulid import ULID
 
-from app.vault.writer import slugify, write_atomic
+from app.memory.writer import slugify, write_atomic
 
 RECEIPTS = Path("receipts")
 
@@ -16,7 +16,7 @@ RECEIPTS = Path("receipts")
 class Receipt:
     request: str
     response: str
-    source: str  # hud | obsidian | voice | routine
+    source: str  # hud | voice | routine
     tier: int
     at: datetime
     duration_ms: int
@@ -30,10 +30,10 @@ class Receipt:
     status: str = "ok"  # ok | error | cancelled | timed_out
 
 
-def write_receipt(vault: Path, r: Receipt) -> tuple[str, Path]:
+def write_receipt(memory: Path, r: Receipt) -> tuple[str, Path]:
     """Writes the receipt and returns (id, path)."""
     rid = str(ULID.from_datetime(r.at))
-    folder = vault / RECEIPTS / f"{r.at:%Y}" / f"{r.at:%m}"
+    folder = memory / RECEIPTS / f"{r.at:%Y}" / f"{r.at:%m}"
     base = f"{r.at:%Y-%m-%d-%H%M%S}-{slugify(r.request, 40)}"
     path = folder / f"{base}.md"
     if path.exists():

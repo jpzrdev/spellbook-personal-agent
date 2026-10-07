@@ -1,16 +1,16 @@
-"""Migrates a vault (and bridge/data, .env) from the old Portuguese layout to the English one.
+"""Migrates a memory (and bridge/data, .env) from the old Portuguese layout to the English one.
 
-Older versions used Portuguese names for the vault's structure (`vida/tarefas.md`, `recibos/`, `tipo: recibo`…),
+Older versions used Portuguese names for the memory's structure (`vida/tarefas.md`, `recibos/`, `tipo: recibo`…),
 the Bridge's data folder (`bridge/dados/`) and the .env variables. The content of the notes stays as it is: only
 the structure the code reads (folders, file names, frontmatter keys and fixed values) changes.
 
 Usage (stop the Bridge first):
     uv run python -m app.migrations.english_layout            # dry run: lists what would change
     uv run python -m app.migrations.english_layout --apply    # applies it
-Options: --language pt-BR (written to GANDALF_LANGUAGE in the .env if it's missing), --vault <path>.
+Options: --language pt-BR (written to GANDALF_LANGUAGE in the .env if it's missing), --memory <path>.
 
-Commit the vault's git before applying: everything can then be undone with git. Run it before the first start of
-the new version if you can: the start scripts copy the new template into the vault, and a file already at a
+Commit the memory's git before applying: everything can then be undone with git. Run it before the first start of
+the new version if you can: the start scripts copy the new template into the memory, and a file already at a
 destination is only replaced when it's an untouched template copy (anything else is reported and left in place).
 """
 
@@ -25,7 +25,7 @@ from pathlib import Path
 
 from app.config import REPO_ROOT, get_settings
 
-TEMPLATE = REPO_ROOT / "vault-template"
+TEMPLATE = REPO_ROOT / "memory-template"
 
 # ---------- names ----------
 
@@ -37,13 +37,13 @@ SKILLS = {
     "pesquisar": "research",
     "planejar-semana": "plan-week",
     "preparar-estudos": "prepare-studies",
-    "responder-com-vault": "answer-from-vault",
+    "responder-com-vault": "answer-from-memory",
     "resumo-do-dia": "daily-summary",
     "resumo-emails": "email-summary",
     "sincronizar-agenda": "sync-calendar",
     "revisar-estudos": "review-studies",
 }
-# Routines that came from the template: the file (slug) gets the template's English name, so the vault
+# Routines that came from the template: the file (slug) gets the template's English name, so the memory
 # setup doesn't add a second copy. Receipts that point at them are updated too.
 ROUTINES = {
     "aviso-da-manha": "morning-notice",
@@ -56,7 +56,7 @@ ROUTINES = {
 }
 ACTIONS = {"aviso-do-dia": "daily-notice", "git-commit": "git-commit"}
 
-# sha1 of the old template files (skills and vault CLAUDE.md): an untouched copy is replaced by the new template.
+# sha1 of the old template files (skills and memory CLAUDE.md): an untouched copy is replaced by the new template.
 OLD_TEMPLATE_SKILLS = {
     "30fd611ea764df0a9a52f4db17053c3c8b46ea59": "agendar",
     "cfd8ba3ec48a5a6e8c789b7e9d58bbdf8958e7a9": "compilar-raw",
@@ -72,7 +72,7 @@ OLD_TEMPLATE_SKILLS = {
 }
 OLD_TEMPLATE_CLAUDE_MD = {"abaee37f0f5252da0fb2537ac39f1a04e25b7fb5"}
 
-# Folder/file moves, in order (more specific first). Paths relative to the vault.
+# Folder/file moves, in order (more specific first). Paths relative to the memory.
 MOVES = [
     ("vida/tarefas.md", "life/tasks.md"),
     ("vida/lembretes.md", "life/reminders.md"),
@@ -259,26 +259,26 @@ class Plan:
             self.warnings.append(message)
 
 
-def _is_template_copy(vault: Path, path: Path) -> bool:
+def _is_template_copy(memory: Path, path: Path) -> bool:
     """Whether path (a file, or a folder and all its files) is an untouched copy of the template at the same place
-    (setup_vault adds those)."""
-    template = TEMPLATE / path.relative_to(vault)
+    (setup_memory adds those)."""
+    template = TEMPLATE / path.relative_to(memory)
     if path.is_dir():
-        return template.is_dir() and all(_is_template_copy(vault, p) for p in path.rglob("*") if p.is_file())
+        return template.is_dir() and all(_is_template_copy(memory, p) for p in path.rglob("*") if p.is_file())
     return path.is_file() and template.is_file() and sha1(path) == sha1(template)
 
 
-def _merge_move(vault: Path, src: Path, dst: Path, plan: Plan, apply: bool = True) -> None:
+def _merge_move(memory: Path, src: Path, dst: Path, plan: Plan, apply: bool = True) -> None:
     """Moves src to dst; if dst is an existing folder, moves the contents. An existing file is replaced only when it's
     an untouched template copy; otherwise both are kept and the conflict is reported. With apply=False it only reports."""
     if src.is_dir() and dst.is_dir():
         for child in sorted(src.iterdir()):
-            _merge_move(vault, child, dst / child.name, plan, apply)
+            _merge_move(memory, child, dst / child.name, plan, apply)
         if apply and not any(src.iterdir()):
             src.rmdir()
         return
-    if dst.exists() and not _is_template_copy(vault, dst):
-        plan.warn(f"{dst.relative_to(vault).as_posix()} already exists: {src.relative_to(vault).as_posix()} was not "
+    if dst.exists() and not _is_template_copy(memory, dst):
+        plan.warn(f"{dst.relative_to(memory).as_posix()} already exists: {src.relative_to(memory).as_posix()} was not "
                   "moved onto it (it keeps its old name); merge them by hand")
         return
     if apply:
@@ -288,25 +288,25 @@ def _merge_move(vault: Path, src: Path, dst: Path, plan: Plan, apply: bool = Tru
         shutil.move(str(src), str(dst))
 
 
-def migrate_vault(vault: Path, plan: Plan) -> None:
+def migrate_memory(memory: Path, plan: Plan) -> None:
     # 1) skills: an untouched template copy is removed (the native skill in skills/ replaces it); edited ones are
-    #    renamed and rewritten (app.migrations.vault_skills then moves them out of the vault)
-    skills_dir = vault / ".claude" / "skills"
+    #    renamed and rewritten (app.migrations.memory_skills then moves them out of the memory)
+    skills_dir = memory / ".claude" / "skills"
     if skills_dir.is_dir():
         for folder in sorted(p for p in skills_dir.iterdir() if p.is_dir() and p.name in SKILLS):
             new = skills_dir / SKILLS[folder.name]
             skill_md = folder / "SKILL.md"
             template_skill = get_settings().skills_path / SKILLS[folder.name]
             pristine = skill_md.is_file() and OLD_TEMPLATE_SKILLS.get(sha1(skill_md)) == folder.name
-            if new.exists() and not _is_template_copy(vault, new):
-                plan.warn(f"skill {new.name} already exists; left {folder.relative_to(vault).as_posix()} untouched")
+            if new.exists() and not _is_template_copy(memory, new):
+                plan.warn(f"skill {new.name} already exists; left {folder.relative_to(memory).as_posix()} untouched")
                 continue
             if pristine and template_skill.is_dir():
                 plan.do(f"skill {folder.name} removed (untouched template copy: skills/{new.name} replaces it)",
                         lambda f=folder, n=new: (shutil.rmtree(f), shutil.rmtree(n, ignore_errors=True)))
             else:
                 def rename_skill(f=folder, n=new):
-                    shutil.rmtree(n, ignore_errors=True)  # an untouched template copy, if setup_vault added one
+                    shutil.rmtree(n, ignore_errors=True)  # an untouched template copy, if setup_memory added one
                     shutil.move(str(f), str(n))
                     md = n / "SKILL.md"
                     if md.is_file():
@@ -315,47 +315,47 @@ def migrate_vault(vault: Path, plan: Plan) -> None:
                 if not template_skill.is_dir():
                     plan.warn(f"skill {folder.name} is not a native skill; its instructions may still mention old field names")
 
-    # 2) vault CLAUDE.md
-    claude_md = vault / "CLAUDE.md"
+    # 2) memory CLAUDE.md
+    claude_md = memory / "CLAUDE.md"
     if claude_md.is_file() and sha1(claude_md) in OLD_TEMPLATE_CLAUDE_MD:
         plan.do("CLAUDE.md → the new template (it was an untouched copy)",
                 lambda: shutil.copy2(TEMPLATE / "CLAUDE.md", claude_md))
     elif claude_md.is_file() and "vida/" in claude_md.read_text(encoding="utf-8"):
-        plan.warn("CLAUDE.md was edited by hand: review it against vault-template/CLAUDE.md (paths were rewritten)")
+        plan.warn("CLAUDE.md was edited by hand: review it against memory-template/CLAUDE.md (paths were rewritten)")
 
     # 3) routines that came from the template get the English slug
-    routines = vault / "vida" / "rotinas"
+    routines = memory / "vida" / "rotinas"
     if routines.is_dir():
         for path in sorted(routines.glob("*.md")):
             name = f"{ROUTINES.get(path.stem)}.md"
-            target = vault / "life" / "routines" / name
+            target = memory / "life" / "routines" / name
             if path.stem in ROUTINES and not (routines / name).exists() and (
-                    not target.exists() or _is_template_copy(vault, target)):
+                    not target.exists() or _is_template_copy(memory, target)):
                 plan.do(f"vida/rotinas/{path.name} → {ROUTINES[path.stem]}.md",
                         lambda p=path: p.rename(p.with_name(f"{ROUTINES[p.stem]}.md")))
 
     # 4) folders and files
     for old, new in MOVES:
-        src, dst = vault / old, vault / new
+        src, dst = memory / old, memory / new
         if src.exists():
-            _merge_move(vault, src, dst, plan, apply=False)  # reports the conflicts in the dry run too
-            plan.do(f"{old} → {new}", lambda s=src, d=dst: _merge_move(vault, s, d, plan))
+            _merge_move(memory, src, dst, plan, apply=False)  # reports the conflicts in the dry run too
+            plan.do(f"{old} → {new}", lambda s=src, d=dst: _merge_move(memory, s, d, plan))
 
     # 5) subject folders (_anotacoes, _fontes)
-    for studies in (vault / "wiki" / "studies", vault / "wiki" / "estudos"):
+    for studies in (memory / "wiki" / "studies", memory / "wiki" / "estudos"):
         if not studies.is_dir():
             continue
         for subject in sorted(p for p in studies.iterdir() if p.is_dir()):
             for old, new in SUBJECT_FOLDERS.items():
                 if (subject / old).is_dir():
-                    _merge_move(vault, subject / old, subject / new, plan, apply=False)
-                    plan.do(f"{subject.relative_to(vault).as_posix()}/{old} → {new}",
-                            lambda s=subject / old, d=subject / new: _merge_move(vault, s, d, plan))
+                    _merge_move(memory, subject / old, subject / new, plan, apply=False)
+                    plan.do(f"{subject.relative_to(memory).as_posix()}/{old} → {new}",
+                            lambda s=subject / old, d=subject / new: _merge_move(memory, s, d, plan))
 
     # 6) note contents: frontmatter keys/values, receipt headings and path references
     changed = []
-    for path in sorted(vault.rglob("*.md")):
-        rel = path.relative_to(vault)
+    for path in sorted(memory.rglob("*.md")):
+        rel = path.relative_to(memory)
         if rel.parts[0] in (".git", ".obsidian", ".trash"):
             continue
         try:
@@ -369,15 +369,15 @@ def migrate_vault(vault: Path, plan: Plan) -> None:
         def write_all():
             for path, new in changed:
                 # The file may have moved in the steps above: find it again by its new location.
-                target = path if path.exists() else _moved(vault, path)
+                target = path if path.exists() else _moved(memory, path)
                 if target and target.exists():
                     target.write_text(rewrite_note(target.read_text(encoding="utf-8"), is_skill=target.name == "SKILL.md"),
                                       encoding="utf-8", newline="")
         plan.do(f"rewrite the frontmatter/paths of {len(changed)} note(s)", write_all)
 
 
-def _moved(vault: Path, old: Path) -> Path | None:
-    rel = old.relative_to(vault).as_posix()
+def _moved(memory: Path, old: Path) -> Path | None:
+    rel = old.relative_to(memory).as_posix()
     for pattern, repl in PATHS:
         rel = _sub_path(pattern, repl, rel)
     for o, n in ROUTINES.items():
@@ -385,7 +385,7 @@ def _moved(vault: Path, old: Path) -> Path | None:
     for o, n in SKILLS.items():
         rel = rel.replace(f".claude/skills/{o}/", f".claude/skills/{n}/")
     rel = rel.replace("wiki/about-me/perfil.md", "wiki/about-me/profile.md")
-    return vault / rel
+    return memory / rel
 
 
 # ---------- bridge/dados → bridge/data ----------
@@ -484,21 +484,21 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--apply", action="store_true", help="apply the changes (default: dry run)")
     parser.add_argument("--language", default="pt-BR", help="GANDALF_LANGUAGE to add to the .env if missing")
-    parser.add_argument("--vault", type=Path, default=None)
+    parser.add_argument("--memory", type=Path, default=None)
     args = parser.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # Windows consoles default to cp1252
 
-    vault = (args.vault or get_settings().vault_path).resolve()
+    memory = (args.memory or get_settings().memory_path).resolve()
     plan = Plan(apply=args.apply)
-    if vault.is_dir():
-        migrate_vault(vault, plan)
+    if memory.is_dir():
+        migrate_memory(memory, plan)
     else:
-        plan.warn(f"vault not found at {vault}")
+        plan.warn(f"memory not found at {memory}")
     migrate_data(REPO_ROOT / "bridge" / "dados", REPO_ROOT / "bridge" / "data", plan)
     migrate_env(REPO_ROOT / ".env", args.language, plan)
 
-    print(f"{'Applied' if args.apply else 'Dry run (use --apply to change files)'}: {vault}")
+    print(f"{'Applied' if args.apply else 'Dry run (use --apply to change files)'}: {memory}")
     for step in plan.steps:
         print(f"  - {step}")
     if not plan.steps:
@@ -506,8 +506,8 @@ def main(argv: list[str] | None = None) -> int:
     for warning in plan.warnings:
         print(f"  ! {warning}")
     if args.apply and plan.steps:
-        print("Then run `uv run python -m app.setup_vault` to add what the new template has, "
-              "and `uv run python -m app.migrations.vault_skills` to move your skills out of the vault.")
+        print("Then run `uv run python -m app.setup_memory` to add what the new template has, "
+              "and `uv run python -m app.migrations.memory_skills` to move your skills out of the memory.")
     return 0
 
 

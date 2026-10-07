@@ -15,7 +15,7 @@ const LINKS: NavItem[] = [
   { to: '/routines', label: 'Routines', icon: <Repeat /> },
   { to: '/studies', label: 'Studies', icon: <GraduationCap /> },
   { to: '/library', label: 'Library', icon: <BookMarked /> },
-  { to: '/vault', label: 'Vault', icon: <Library /> },
+  { to: '/memory', label: 'Memory', icon: <Library /> },
   { to: '/receipts', label: 'Receipts', icon: <Receipt /> },
   { to: '/ui', label: 'UI', icon: <Palette /> },
 ]

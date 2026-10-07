@@ -1,6 +1,6 @@
 from datetime import date
 
-from app.vault.tasks import format_task, parse_tasks, set_done, sort_by_priority
+from app.memory.tasks import format_task, parse_tasks, set_done, sort_by_priority
 
 TODAY = date(2026, 10, 3)
 
@@ -37,10 +37,10 @@ def test_format_task_round_trip():
     assert (x.text, x.priority, x.tags) == ("Pay electricity", "high", ["personal"])
 
 
-def test_priority_order(vault):
-    from app.vault.reader import read_tasks
+def test_priority_order(memory):
+    from app.memory.reader import read_tasks
 
-    order = [x.text for x in sort_by_priority(read_tasks(vault), TODAY)]
+    order = [x.text for x in sort_by_priority(read_tasks(memory), TODAY)]
     # Overdue/today first (by priority), then the rest by priority and date.
     assert order[:2] == ["Review limits", "Renew library book"]
     assert order[2] == "Calculus problem set 3"

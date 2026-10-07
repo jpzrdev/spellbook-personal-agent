@@ -1,17 +1,17 @@
-import { ChevronDown, Send, Terminal } from 'lucide-react'
+import { BookmarkPlus, ChevronDown, Send, Terminal } from 'lucide-react'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
 import type { ProposalSummary } from '../lib/api'
 import { chat, useChat, type Turn } from '../lib/chatStore'
 import { mascot, reactToReply } from '../lib/mascot'
 import { cn } from '../lib/cn'
-import { useAsk, useSessions } from '../lib/queries'
+import { useAsk, useCapture, useSessions } from '../lib/queries'
 import { SESSION_STATUS } from '../lib/sessions'
 import { EventProposal } from './EventProposal'
 import { GandalfText } from './GandalfText'
 import { ResearchResult } from './ResearchResult'
 import { SessionTerminal } from './SessionTerminal'
-import { Badge, Button, TierBadge } from './ui'
+import { Badge, Button, TierBadge, useToast } from './ui'
 import { focusRing } from './ui/styles'
 
 const SUGGESTIONS = ['what do I have today?', 'my priorities', 'remind me to … in 30 min', 'add task …', 'organize my raw/']
@@ -36,6 +36,34 @@ function useSend(note?: string) {
     )
   }
   return { send, pending: ask.isPending }
+}
+
+/** Files a chat answer back into the memory: it goes to raw/ and compile-raw folds it into the wiki. */
+function KeepAnswer({ question, answer }: { question: string; answer: string }) {
+  const capture = useCapture()
+  const toast = useToast()
+  const saved = capture.isSuccess
+  return (
+    <button
+      type="button"
+      disabled={saved || capture.isPending}
+      onClick={() =>
+        capture.mutate(
+          { kind: 'answer', title: question.slice(0, 60), text: `## Question
+
+${question}
+
+## Answer
+
+${answer}` },
+          { onSuccess: () => toast('success', 'Saved: it goes into the wiki on the next compile'), onError: (e) => toast('error', e.message) },
+        )
+      }
+      className={cn('flex w-fit cursor-pointer items-center gap-1.5 rounded-pill px-3 py-1 text-xs font-semibold text-ink-muted shadow-raised-sm hover:text-ink active:shadow-sunken-sm disabled:cursor-default disabled:opacity-60', focusRing)}
+    >
+      <BookmarkPlus className="size-3.5" aria-hidden /> {saved ? 'Saved to memory' : 'Save to memory'}
+    </button>
+  )
 }
 
 function Reply({ t, last, send }: { t: Turn; last: boolean; send: (q: string, c?: boolean) => void }) {
@@ -65,6 +93,7 @@ function Reply({ t, last, send }: { t: Turn; last: boolean; send: (q: string, c?
         {r.tier === 1 && !r.understood && <Badge color="gold">not recognized</Badge>}
       </div>
       <GandalfText text={r.reply} />
+      {r.tier === 2 && r.intent === 'answer' && <KeepAnswer question={t.question} answer={r.reply} />}
       {proposals.map((p) => (
         <EventProposal
           key={p.id}
@@ -138,7 +167,7 @@ export function ChatThread({ className, height = 'max-h-[60vh]', note, placehold
           <div className="flex flex-col gap-3">
             <p className="text-sm text-ink-muted">
               Ask anything. Simple rules answer right away (T1); the rest goes to Claude Code (T2 fast or
-              T3 with access to the vault).
+              T3 with access to the memory).
             </p>
             <div className="flex flex-wrap gap-2">
               {SUGGESTIONS.map((s) => (

@@ -57,7 +57,7 @@ def main() -> None:
             result({"verdict": "correct" if correct else "wrong", "comment": "Nice!" if correct else "That's not it.",
                     "detail": "The derivative is the instantaneous rate of change."}, session_id, usage, duration_ms=500)
         elif "ESCALATE" in prompt:
-            result({"action": "escalate", "reason": "This needs work in the vault.", "task": "Organize raw/ (ESCALATED)", "skill": None},
+            result({"action": "escalate", "reason": "This needs work in the memory.", "task": "Organize raw/ (ESCALATED)", "skill": None},
                    session_id, usage, duration_ms=900, total_cost_usd=0.0012)
         elif "RESEARCH" in prompt:
             result({"action": "research", "topic": "Moving to Canada", "kind": "research",

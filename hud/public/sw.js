@@ -1,5 +1,5 @@
 // Gandalf's service worker: makes the app installable and opens the "shell" even on a flaky network.
-// Never caches anything from the API (/api): vault data and Gandalf's replies always come from the Bridge.
+// Never caches anything from the API (/api): memory data and Gandalf's replies always come from the Bridge.
 const CACHE = 'gandalf-v3'
 const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icon-192.png', '/icon.svg']
 

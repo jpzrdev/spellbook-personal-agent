@@ -65,8 +65,8 @@ export const patch = <T>(path: string, body: unknown) => api<T>(path, { method: 
 export type Health = {
   status: string
   version: string
-  vault: string
-  vault_exists: boolean
+  memory: string
+  memory_exists: boolean
   /** The assistant's language (what Gandalf speaks and writes). The HUD is always in English. */
   language: string
   claude?: { installed: boolean; logged_in: boolean; method: string | null }
@@ -133,7 +133,7 @@ export type Session = {
   source: string
   skill: string | null
   routine: string | null
-  output: 'vault' | 'ephemeral' | 'action' | 'research' | 'library'
+  output: 'memory' | 'ephemeral' | 'action' | 'research' | 'library'
   ephemeral_id: string | null
   status: SessionStatus
   claude_session_id: string | null
@@ -175,7 +175,7 @@ export type Routine = {
   skill: string | null
   action: string | null
   description: string
-  output: 'vault' | 'ephemeral'
+  output: 'memory' | 'ephemeral'
   /** Phone push when it finishes fine (failures always notify). */
   notify: boolean
   next: string | null
@@ -191,7 +191,7 @@ export type Skill = {
   last_run: (Run & { id: string; file: string }) | null
 }
 
-/** A passing result (e.g. an email summary): it stays outside the vault and expires. */
+/** A passing result (e.g. an email summary): it stays outside the memory and expires. */
 export type Ephemeral = {
   id: string
   title: string
@@ -201,7 +201,7 @@ export type Ephemeral = {
   source: string
   routine: string | null
   session_id: string | null
-  /** Web research result (not saved yet): "Save to vault" organizes it in the Library. */
+  /** Web research result (not saved yet): "Save to memory" organizes it in the Library. */
   research?: { topic: string; kind: 'research' | 'plan'; request: string; slug: string | null } | null
 }
 
@@ -292,12 +292,41 @@ export type Receipt = {
   request: string
 }
 
-export type VaultNote = {
+export type MemoryNote = {
   path: string
+  /** The body without the frontmatter (null for binary files). */
   text: string | null
+  /** The whole file, frontmatter included (what the editor edits). */
+  raw?: string
   metadata: Record<string, unknown>
   binary: boolean
   size: number
+  /** The version the editor opened (text: too big for a JS number): a save with an older one is refused (409). */
+  version: string
+  /** False for binary files and receipts/. */
+  editable: boolean
+}
+
+export type SearchResult = { path: string; title: string; snippets: string[]; matches: number }
+
+export type Backlink = { path: string; title: string; context: string }
+
+/** The wiki's mechanical health check (no AI); the lint-wiki skill handles the rest. */
+export type MemoryHealth = {
+  notes: number
+  counts: Record<'broken_links' | 'orphans' | 'unindexed' | 'no_frontmatter' | 'raw_pending', number>
+  broken_links: Array<{ source: string; target: string; line: number }>
+  orphans: string[]
+  unindexed: string[]
+  no_frontmatter: string[]
+  raw_pending: string[]
+}
+
+/** Fetches a memory file with the token (for <img>/<iframe>, which can't send the header) as an object URL. */
+export async function fetchMemoryFile(path: string): Promise<string> {
+  const resp = await fetch(`/api/memory/file?path=${encodeURIComponent(path)}`, { headers: { Authorization: `Bearer ${TOKEN ?? ''}` } })
+  if (!resp.ok) throw await errorFrom(resp)
+  return URL.createObjectURL(await resp.blob())
 }
 
 export type DayCost = {

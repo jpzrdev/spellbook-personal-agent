@@ -11,10 +11,10 @@ class ActionFailed(Exception):
     pass
 
 
-def _git(vault: Path, *args: str) -> subprocess.CompletedProcess:
+def _git(memory: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         ["git", *args],
-        cwd=vault,
+        cwd=memory,
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -24,15 +24,15 @@ def _git(vault: Path, *args: str) -> subprocess.CompletedProcess:
     )
 
 
-def git_commit(vault: Path, now: datetime) -> str:
-    """Commits everything that changed in the vault (so any change can be undone)."""
-    if not (vault / ".git").exists():
-        raise ActionFailed("the vault has no git repository (run `git init` inside vault/)")
-    _git(vault, "add", "-A")
-    if not _git(vault, "status", "--porcelain").stdout.strip():
-        return "Nothing changed in the vault since the last commit."
-    changes = _git(vault, "diff", "--cached", "--name-only").stdout.split()
-    r = _git(vault, "commit", "-m", f"Daily commit {now:%Y-%m-%d %H:%M}")
+def git_commit(memory: Path, now: datetime) -> str:
+    """Commits everything that changed in the memory (so any change can be undone)."""
+    if not (memory / ".git").exists():
+        raise ActionFailed("the memory has no git repository (run `git init` inside memory/)")
+    _git(memory, "add", "-A")
+    if not _git(memory, "status", "--porcelain").stdout.strip():
+        return "Nothing changed in the memory since the last commit."
+    changes = _git(memory, "diff", "--cached", "--name-only").stdout.split()
+    r = _git(memory, "commit", "-m", f"Daily commit {now:%Y-%m-%d %H:%M}")
     if r.returncode != 0:
         raise ActionFailed((r.stderr or r.stdout).strip()[-400:])
     listed = "\n".join(f"- `{m}`" for m in changes[:20])
@@ -40,20 +40,20 @@ def git_commit(vault: Path, now: datetime) -> str:
     return f"Committed {len(changes)} file(s):\n{listed}{extra}"
 
 
-def daily_notice(vault: Path, now: datetime) -> str:
+def daily_notice(memory: Path, now: datetime) -> str:
     """Morning notification: appointments (from the synced agenda), birthdays, tasks and today's reminders."""
     from app import push
-    from app.vault import reader, reminders
-    from app.vault.tasks import sort_by_priority
+    from app.memory import reader, reminders
+    from app.memory.tasks import sort_by_priority
 
     day = now.date()
-    events = reader.read_agenda(vault, day)
+    events = reader.read_agenda(memory, day)
     birthdays = [e.title for e in events if "anivers" in e.title.lower() or "birthday" in e.title.lower()]
     appointments = [e for e in events if e.title not in birthdays]
-    open_tasks = sort_by_priority(reader.read_tasks(vault), day)
+    open_tasks = sort_by_priority(reader.read_tasks(memory), day)
     due_today = [x for x in open_tasks if x.due and x.due <= day]
     overdue = sum(1 for x in due_today if x.due < day)
-    alerts = [x for x in reminders.read(vault, now.tzinfo) if not x.done and x.when and x.when.date() == day]
+    alerts = [x for x in reminders.read(memory, now.tzinfo) if not x.done and x.when and x.when.date() == day]
 
     parts = []
     if birthdays:
@@ -72,6 +72,6 @@ def daily_notice(vault: Path, now: datetime) -> str:
 
 
 ACTIONS: dict[str, tuple[str, Callable[[Path, datetime], str]]] = {
-    "git-commit": ("Commit everything that changed in the vault to git", git_commit),
+    "git-commit": ("Commit everything that changed in the memory to git", git_commit),
     "daily-notice": ("Phone notification with the day's summary (agenda, birthdays, tasks, reminders)", daily_notice),
 }

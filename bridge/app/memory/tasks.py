@@ -1,4 +1,4 @@
-"""Tasks in the Obsidian Tasks plugin format.
+"""Tasks in `life/tasks.md`, one per line (`- [ ] text 📅 YYYY-MM-DD ⏫ #tag`).
 
 Example line: `- [ ] Calculus problem set 3 📅 2026-10-06 ⏫ #studies/calculus`
 

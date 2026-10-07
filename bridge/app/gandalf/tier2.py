@@ -128,11 +128,11 @@ def _args() -> list[str]:
     ]
 
 
-def decide(vault: Path, request: str, now: datetime, previous: list[dict] | None = None,
+def decide(memory: Path, request: str, now: datetime, previous: list[dict] | None = None,
            note: tuple[str, str] | None = None) -> Decision:
     """`previous`: the last turns of the conversation ({question, answer}), to understand short replies
     like "tomorrow at 9" after Gandalf asked "when?"."""
-    context = build_context(vault, now)
+    context = build_context(memory, now)
     prompt = f"<context>\n{context}\n</context>\n\n"
     if previous:
         turns = "\n\n".join(f"User: {x['question'].strip()}\nGandalf: {x['answer'].strip()}" for x in previous)
@@ -146,7 +146,7 @@ def decide(vault: Path, request: str, now: datetime, previous: list[dict] | None
     cost = 0.0
     last = None
     for attempt in (1, 2):  # invalid JSON: try once more
-        r = claude_cli.run_json(prompt, _args(), cwd=vault)
+        r = claude_cli.run_json(prompt, _args(), cwd=memory)
         total_in += r.input_tokens
         total_out += r.output_tokens
         cost += r.cost_usd

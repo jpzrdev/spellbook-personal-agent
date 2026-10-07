@@ -405,7 +405,7 @@ export function SubjectScreen() {
               <ul className="flex flex-col gap-1 text-sm">
                 {s.sources.slice(0, 8).map((f) => (
                   <li key={f.file}>
-                    <Link to={`/vault?note=${encodeURIComponent(f.file)}`} className={cn('block truncate rounded text-primary-text hover:underline', focusRing)}>
+                    <Link to={`/memory?note=${encodeURIComponent(f.file)}`} className={cn('block truncate rounded text-primary-text hover:underline', focusRing)}>
                       {f.name.replace(/^\d{4}-\d{2}-\d{2}-\d{6}-/, '')}
                     </Link>
                   </li>

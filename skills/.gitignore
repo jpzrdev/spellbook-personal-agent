@@ -1,7 +1,8 @@
 # One folder per skill (<name>/SKILL.md). The native skills below ship with the project (the Bridge and the HUD
 # call them by name); the ones you or Gandalf create stay on your machine, out of git.
 /*/
-!/answer-from-vault/
+!/answer-from-memory/
+!/lint-wiki/
 !/compile-raw/
 !/daily-summary/
 !/email-summary/

@@ -4,12 +4,12 @@ import frontmatter
 import pytest
 
 from app.gandalf import tier1
-from app.vault.reader import read_tasks
+from app.memory.reader import read_tasks
 from tests.conftest import NOW, TZ
 
 
-def ctx(vault):
-    return tier1.Context(vault=vault, now=NOW, tz=TZ)
+def ctx(memory):
+    return tier1.Context(memory=memory, now=NOW, tz=TZ)
 
 
 # ---------- English ----------
@@ -27,37 +27,37 @@ def ctx(vault):
         ("note: an idea for the thesis", "note"),
     ],
 )
-def test_recognized_intents(vault, request_text, intent):
-    r = tier1.answer(request_text, ctx(vault))
+def test_recognized_intents(memory, request_text, intent):
+    r = tier1.answer(request_text, ctx(memory))
     assert r is not None and r.intent == intent
 
 
-def test_does_not_recognize_an_open_question(vault):
-    assert tier1.answer("summarize my last note about limits", ctx(vault)) is None
+def test_does_not_recognize_an_open_question(memory):
+    assert tier1.answer("summarize my last note about limits", ctx(memory)) is None
 
 
-def test_todays_agenda(vault):
-    r = tier1.answer("what do I have today?", ctx(vault))
+def test_todays_agenda(memory):
+    r = tier1.answer("what do I have today?", ctx(memory))
     assert "Today, Saturday, October 3" in r.text
     assert "- 09:00–10:30 Calculus II lecture (Room 204)" in r.text
     assert "Review limits" in r.text  # today's task
     assert "Renew library book" in r.text  # overdue
 
 
-def test_tomorrows_agenda_without_events(vault):
-    r = tier1.answer("what do I have tomorrow", ctx(vault))
+def test_tomorrows_agenda_without_events(memory):
+    r = tier1.answer("what do I have tomorrow", ctx(memory))
     assert r.data["date"] == "2026-10-04"
     assert "Nothing on the calendar" in r.text
 
 
-def test_add_task_with_date_priority_and_tags(vault):
-    r = tier1.answer("Add task study Fourier series friday urgent #studies/calculus", ctx(vault))
+def test_add_task_with_date_priority_and_tags(memory):
+    r = tier1.answer("Add task study Fourier series friday urgent #studies/calculus", ctx(memory))
     x = r.data["task"]
     assert x["text"] == "study Fourier series"
     assert x["due"] == "2026-10-09"  # the next Friday from Saturday 10/03
     assert x["priority"] == "high"
     assert x["tags"] == ["studies/calculus"]
-    assert any(t.text == "study Fourier series" for t in read_tasks(vault))
+    assert any(t.text == "study Fourier series" for t in read_tasks(memory))
 
 
 @pytest.mark.parametrize(
@@ -75,9 +75,9 @@ def test_extract_date(text, expected):
     assert d == expected
 
 
-def test_note_creates_a_file_in_raw(vault):
-    r = tier1.answer("note: buy a present for Anna", ctx(vault))
-    path = vault / r.data["file"]
+def test_note_creates_a_file_in_raw(memory):
+    r = tier1.answer("note: buy a present for Anna", ctx(memory))
+    path = memory / r.data["file"]
     post = frontmatter.load(path)
     assert post["type"] == "capture"
     assert post.content == "buy a present for Anna"
@@ -97,19 +97,19 @@ def test_note_creates_a_file_in_raw(vault):
         ("anota: ideia para o TCC", "note"),
     ],
 )
-def test_recognized_intents_in_portuguese(vault, pt_br, request_text, intent):
-    r = tier1.answer(request_text, ctx(vault))
+def test_recognized_intents_in_portuguese(memory, pt_br, request_text, intent):
+    r = tier1.answer(request_text, ctx(memory))
     assert r is not None and r.intent == intent
 
 
-def test_agenda_in_portuguese(vault, pt_br):
-    r = tier1.answer("o que tenho hoje?", ctx(vault))
+def test_agenda_in_portuguese(memory, pt_br):
+    r = tier1.answer("o que tenho hoje?", ctx(memory))
     assert "Hoje, sábado, 3 de outubro" in r.text
-    assert "- Nenhum compromisso na agenda." in tier1.answer("o que tenho amanhã", ctx(vault)).text
+    assert "- Nenhum compromisso na agenda." in tier1.answer("o que tenho amanhã", ctx(memory)).text
 
 
-def test_add_task_keeps_accents_in_portuguese(vault, pt_br):
-    r = tier1.answer("Adiciona tarefa estudar séries de Fourier sexta urgente #estudos/calculo", ctx(vault))
+def test_add_task_keeps_accents_in_portuguese(memory, pt_br):
+    r = tier1.answer("Adiciona tarefa estudar séries de Fourier sexta urgente #estudos/calculo", ctx(memory))
     x = r.data["task"]
     assert x["text"] == "estudar séries de Fourier"
     assert x["due"] == "2026-10-09" and x["priority"] == "high" and x["tags"] == ["estudos/calculo"]

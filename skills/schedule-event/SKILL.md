@@ -13,7 +13,7 @@ The request carries a JSON block with the parameters for the `create_event` tool
 
 - Create **exactly one** event, with **exactly** the JSON parameters. Don't invent, translate or "improve" the title, date, time, recurrence or reminders.
 - Never edit, move or delete existing events. Don't invite anyone.
-- Don't create or edit files in the vault.
+- Don't create or edit files in the memory.
 - If the Google Calendar tools are not available, reply "Google Calendar connector not configured." and stop.
 
 ## Steps

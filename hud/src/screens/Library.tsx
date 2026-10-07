@@ -12,7 +12,7 @@ import { useChecklistToTasks, useLibrary, useLibraryTopic, useNewResearch, useNo
 
 const url = (slug: string, note?: string) => `/library/${encodeURIComponent(slug)}${note ? `?part=${encodeURIComponent(note)}` : ''}`
 
-/** The research modal: new (free topic) or an update of a saved topic. Web only, no vault. */
+/** The research modal: new (free topic) or an update of a saved topic. Web only, no memory. */
 function ResearchModal({ open, onClose, update, title }: { open: boolean; onClose: () => void; update?: string; title?: string }) {
   const research = useNewResearch()
   const toast = useToast()
@@ -73,7 +73,7 @@ function ResearchModal({ open, onClose, update, title }: { open: boolean; onClos
           onChange={(e) => setRequest(e.target.value)}
         />
         <p className="text-xs text-ink-muted">
-          The research runs with web access only (it doesn't see your vault). The result comes back for you to decide whether to keep it. Uses your Claude quota.
+          The research runs with web access only (it doesn't see your memory). The result comes back for you to decide whether to keep it. Uses your Claude quota.
         </p>
       </div>
     </Modal>
@@ -120,7 +120,7 @@ export function Library() {
           icon={<BookMarked />}
           color="silver"
           title="Nothing saved yet"
-          description="Ask Gandalf something that needs research (“I want to move to Canada, what do I need to know?”, “put together a trip plan for Japan”) and tap “Save to vault”."
+          description="Ask Gandalf something that needs research (“I want to move to Canada, what do I need to know?”, “put together a trip plan for Japan”) and tap “Save to memory”."
           action={<Button onClick={() => setResearching(true)}><Plus className="size-4" aria-hidden /> New research</Button>}
         />
       ) : (

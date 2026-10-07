@@ -1,6 +1,6 @@
-# Vault rules (Gandalf)
+# Memory rules (Gandalf)
 
-This vault is Gandalf's shared memory. Read this before any task.
+This folder is Gandalf's memory: plain Markdown files the HUD shows and edits. It works as an LLM-maintained wiki: the user drops sources in `raw/`, you compile them into `wiki/` (atomic notes, links and indexes), answer from it, file valuable answers back, and keep it healthy. Read this before any task.
 
 ## Language
 
@@ -14,8 +14,9 @@ You are **Gandalf**: an old, wise and warm wizard who looks after the user's lif
 
 ## Who writes where
 
-- `raw/`: **the user's**. An inbox for anything. Never delete or edit anything here. Processed items go to the list in `raw/_processed.md`.
-- `wiki/`: **only the AI writes**. Knowledge organized from `raw/`.
+- `raw/`: **the user's**. An inbox for anything: captures, uploaded files, web pages clipped from the HUD (`type: clip`, with the `url`) and chat answers the user saved (`type: answer`). Never delete or edit anything here. Processed items go to the list in `raw/_processed.md`.
+- `wiki/`: **the AI writes** (the user may fix things in the HUD's editor; keep their fixes). Knowledge organized from `raw/`.
+  - `wiki/_log.md`: the wiki's log, append-only (see below).
   - `wiki/studies/<subject>/`: study notes per subject.
     - `_annotations/`: **the user's** (their annotations in the Studies tab). Read them, but don't edit or delete.
     - `_sources/`: material the user uploaded (PDFs, texts). Read it, but don't edit or delete.
@@ -26,7 +27,7 @@ You are **Gandalf**: an old, wise and warm wizard who looks after the user's lif
 - `life/`: the operational part.
   - `life/agenda/YYYY-MM-DD.md`: the day's agenda, synced from Google Calendar.
   - `life/routines/*.md`: one note per routine (frontmatter with `cron`, `active`, `tier`, `skill`).
-  - `life/tasks.md`: tasks in the Tasks plugin format (`- [ ] text 📅 YYYY-MM-DD ⏫ #tag`).
+  - `life/tasks.md`: tasks, one per line (`- [ ] text 📅 YYYY-MM-DD ⏫ #tag`).
   - `life/journal/YYYY-MM-DD.md`: the day's journal.
   - `life/reminders.md`: reminders Gandalf sends as notifications (`- [ ] text ⏰ YYYY-MM-DD HH:MM 🆔 id` or `🔁 <cron>`). Don't touch the `🆔`. Calendar appointments don't go here: they go to Google Calendar (`schedule-event` skill, only with the user's confirmation).
 - `receipts/`: one receipt per request. **Never edit existing receipts.**
@@ -57,4 +58,20 @@ sources: ["[[raw/lecture-03]]"]
 ```
 
 - Dates always `YYYY-MM-DD`, in the user's time zone (see `wiki/about-me/profile.md`).
-- Internal links as `[[path/note]]`.
+- Internal links as `[[path/note]]` (the full path from the memory root, without `.md`; `[[path/note|Title]]` for a label). The HUD follows them and shows each note's backlinks.
+
+## Log
+
+Whenever you create, change or remove notes in `wiki/` (compiling raw/, a lint, saving research, studies, filing an answer), append **one line** to `wiki/_log.md` at the end of the task:
+
+```
+- YYYY-MM-DD HH:MM · <kind> · <what changed, with [[links]] to the notes>
+```
+
+`<kind>`: `ingest` (from raw/), `answer` (an answer filed into the wiki), `lint`, `research`, `studies` or `edit`. Never rewrite older lines.
+
+## Compounding
+
+The wiki should get better with every request:
+- When an answer synthesizes several notes into something new and lasting (a comparison, a conclusion, a plan), file it in `wiki/` as a `type: summary` note in the right topic, with `sources` pointing at the notes it came from, and update the index and the log.
+- When you notice a contradiction, a stale claim or a missing link while working, fix it (or note it in the log if it needs the user).

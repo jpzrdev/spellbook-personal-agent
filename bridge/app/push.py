@@ -1,7 +1,7 @@
 """Web Push notifications for the installed HUD (phone/PC), with no third-party service besides
 the browser's own push (Apple/Google/Mozilla).
 
-The VAPID keys are generated on first use and live in `bridge/data/push/` (outside the vault and git),
+The VAPID keys are generated on first use and live in `bridge/data/push/` (outside the memory and git),
 together with the device subscriptions. The notification body never carries sensitive content
 (e.g. the email summary): only a short title; the rest stays in the HUD.
 """

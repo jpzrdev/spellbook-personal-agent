@@ -169,7 +169,7 @@ function RoutineForm({ open, onClose, routine }: { open: boolean; onClose: () =>
   const [advanced, setAdvanced] = useState(!!routine && !simple)
   const [manualCron, setManualCron] = useState(routine?.cron ?? '')
   const [description, setDescription] = useState(routine?.description ?? '')
-  const [output, setOutput] = useState<'vault' | 'ephemeral'>(routine?.output ?? 'vault')
+  const [output, setOutput] = useState<'memory' | 'ephemeral'>(routine?.output ?? 'memory')
   const [notify, setNotify] = useState(routine?.notify ?? false)
   const [error, setError] = useState<string | null>(null)
 
@@ -331,16 +331,16 @@ function RoutineForm({ open, onClose, routine }: { open: boolean; onClose: () =>
           <Tabs
             label="Where the result goes"
             value={output}
-            onChange={(v) => setOutput(v as 'vault' | 'ephemeral')}
+            onChange={(v) => setOutput(v as 'memory' | 'ephemeral')}
             items={[
-              { id: 'vault', label: 'Save to the vault' },
+              { id: 'memory', label: 'Save to the memory' },
               { id: 'ephemeral', label: 'Ephemeral (HUD only)' },
             ]}
           />
           <p className="text-xs text-ink-muted">
             {output === 'ephemeral'
-              ? 'The result shows up in "Today\'s summaries" for 48 h and never goes to the vault or git. Claude Code runs read-only.'
-              : 'The result and the files created stay in the vault (with a full receipt).'}
+              ? 'The result shows up in "Today\'s summaries" for 48 h and never goes to the memory or git. Claude Code runs read-only.'
+              : 'The result and the files created stay in the memory (with a full receipt).'}
           </p>
         </div>
         <Toggle
@@ -380,7 +380,7 @@ export function Routines() {
         <div>
           <h1 className="text-4xl font-semibold tracking-tight">Routines</h1>
           <p className="mt-1 text-ink-muted">
-            {active} of {routines.length} active · files in <code className="font-mono text-sm">life/routines/</code> (editing in Obsidian works too)
+            {active} of {routines.length} active · files in <code className="font-mono text-sm">life/routines/</code> (you can edit them in the Memory tab too)
           </p>
         </div>
         <Button onClick={() => setCreating(true)}>
@@ -437,7 +437,7 @@ export function Routines() {
         }
       >
         <p className="text-sm">
-          The file <code className="font-mono">life/routines/{deleting?.slug}.md</code> will be deleted. It can be recovered from the vault's git.
+          The file <code className="font-mono">life/routines/{deleting?.slug}.md</code> will be deleted. It can be recovered from the memory's git.
         </p>
       </Modal>
     </div>

@@ -11,7 +11,7 @@ from app import clock, config, reminders
 from app.gandalf import claude_cli, tier3
 from app.routines import scheduler
 
-FIXTURE = Path(__file__).parent / "fixtures" / "vault"
+FIXTURE = Path(__file__).parent / "fixtures" / "memory"
 SKILLS_FIXTURE = Path(__file__).parent / "fixtures" / "skills"
 TZ = ZoneInfo("America/Sao_Paulo")
 # Saturday, October 3, 2026, 09:15.
@@ -50,8 +50,8 @@ def pt_br(monkeypatch):
 
 
 @pytest.fixture
-def vault(tmp_path: Path) -> Path:
-    target = tmp_path / "vault"
+def memory(tmp_path: Path) -> Path:
+    target = tmp_path / "memory"
     shutil.copytree(FIXTURE, target)
     return target
 
@@ -63,9 +63,9 @@ def now(monkeypatch) -> datetime:
 
 
 @pytest.fixture
-def client(monkeypatch, vault: Path, now) -> TestClient:
+def client(monkeypatch, memory: Path, now) -> TestClient:
     monkeypatch.setenv("BRIDGE_TOKEN", TOKEN)
-    monkeypatch.setenv("VAULT_PATH", str(vault))
+    monkeypatch.setenv("MEMORY_PATH", str(memory))
     config.get_settings.cache_clear()
     from app.main import app
 

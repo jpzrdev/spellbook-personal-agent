@@ -37,7 +37,7 @@ function NewSession({ onCreated }: { onCreated: (id: string) => void }) {
         aria-label="Task for a new Claude Code session"
         value={text}
         onChange={(e) => setText(e.target.value)}
-        placeholder="New session: describe the task for Claude Code in the vault…"
+        placeholder="New session: describe the task for Claude Code in the memory…"
         className="h-10 min-w-0 flex-1 bg-transparent text-sm placeholder:text-ink-muted/70 focus-visible:outline-none"
       />
       <Button type="submit" size="sm" disabled={!text.trim() || ask.isPending}>
@@ -58,7 +58,7 @@ export function Terminals() {
     <div className="flex flex-col gap-6">
       <header>
         <h1 className="text-4xl font-semibold tracking-tight">Terminals</h1>
-        <p className="mt-1 text-ink-muted">Claude Code sessions running in the vault, live. Up to 2 at a time; the rest wait in the queue.</p>
+        <p className="mt-1 text-ink-muted">Claude Code sessions running in the memory, live. Up to 2 at a time; the rest wait in the queue.</p>
       </header>
       <NewSession onCreated={select} />
 
@@ -69,7 +69,7 @@ export function Terminals() {
           icon={<TerminalSquare />}
           color="wood"
           title="No sessions yet"
-          description="Ask for something that needs work in the vault (in the Chat or up here) and the session shows up on this screen."
+          description="Ask for something that needs work in the memory (in the Chat or up here) and the session shows up on this screen."
         />
       ) : (
         <>

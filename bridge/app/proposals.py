@@ -1,6 +1,6 @@
 """Proposed Google Calendar events, waiting for the user's confirmation in the HUD.
 
-They live in `bridge/data/proposals/<id>.json` (outside the vault) and expire in 7 days. Nothing is
+They live in `bridge/data/proposals/<id>.json` (outside the memory) and expire in 7 days. Nothing is
 created on the calendar without `POST /proposals/{id}/confirm`.
 """
 

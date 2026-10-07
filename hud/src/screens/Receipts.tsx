@@ -13,7 +13,6 @@ const SOURCES = [
   { value: 'hud', text: 'HUD' },
   { value: 'voice', text: 'Voice' },
   { value: 'routine', text: 'Routine' },
-  { value: 'obsidian', text: 'Obsidian' },
 ]
 
 const fmtTokens = (n: number) =>

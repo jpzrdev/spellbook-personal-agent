@@ -16,7 +16,7 @@ const Studies = screen(() => import('./screens/Studies'), 'Studies')
 const SubjectScreen = screen(() => import('./screens/Studies'), 'SubjectScreen')
 const TopicScreen = screen(() => import('./screens/Studies'), 'TopicScreen')
 const QuizScreen = screen(() => import('./screens/Studies'), 'QuizScreen')
-const Vault = screen(() => import('./screens/Vault'), 'Vault')
+const Memory = screen(() => import('./screens/Memory'), 'Memory')
 const Library = screen(() => import('./screens/Library'), 'Library')
 const LibraryTopicScreen = screen(() => import('./screens/Library'), 'LibraryTopicScreen')
 const Receipts = screen(() => import('./screens/Receipts'), 'Receipts')
@@ -39,7 +39,7 @@ export default function App() {
             <Route path="studies/:subject/quiz" element={<QuizScreen />} />
             <Route path="library" element={<Library />} />
             <Route path="library/:slug" element={<LibraryTopicScreen />} />
-            <Route path="vault" element={<Vault />} />
+            <Route path="memory" element={<Memory />} />
             <Route path="receipts" element={<Receipts />} />
             <Route path="ui" element={<UiCatalog />} />
           </Route>

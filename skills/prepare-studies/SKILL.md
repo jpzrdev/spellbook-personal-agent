@@ -1,7 +1,7 @@
 ---
 name: prepare-studies
 description: Builds the study collection for a new subject (certification, exam, course, topic) in wiki/studies/<subject>/ — an index with the goal and syllabus + a few long, in-depth topic notes — and also completes a subject with a new topic or deepens an existing topic. Researches the official content on the web when there is any. Use for "I want to study …", "put together material on …", "help me prepare for …", "deepen the topic …".
-# Web only to research the official content/syllabus; the rest is writing in the vault (Write/Edit already allowed in Tier 3).
+# Web only to research the official content/syllabus; the rest is writing in the memory (Write/Edit already allowed in Tier 3).
 allowed-tools: WebSearch, WebFetch
 ---
 

@@ -90,27 +90,27 @@ def _note_text(path: Path) -> str:
     return frontmatter.load(path).content.strip()
 
 
-def _annotations_text(vault: Path, subject: str, topic: str | None) -> str:
-    items = list_annotations(vault, subject, topic) if topic else [a for a in list_annotations(vault, subject) if not a["topic"]]
+def _annotations_text(memory: Path, subject: str, topic: str | None) -> str:
+    items = list_annotations(memory, subject, topic) if topic else [a for a in list_annotations(memory, subject) if not a["topic"]]
     return "\n\n".join(f"- {a['title'] + ': ' if a['title'] else ''}{a['text']}" for a in items)
 
 
-def material(vault: Path, subject: str, topic: str | None) -> list[Source]:
+def material(memory: Path, subject: str, topic: str | None) -> list[Source]:
     """Notes that go into the quiz: the chosen topic, or all of them (trimmed to fit the limit)."""
     if topic:
-        path = subject_note(vault, subject, topic)
+        path = subject_note(memory, subject, topic)
         text = _note_text(path)[:TOPIC_LIMIT]
-        if mine := _annotations_text(vault, subject, topic):
+        if mine := _annotations_text(memory, subject, topic):
             text += f"\n\n## User's annotations\n{mine[:6000]}"
         return [Source(topic, md_title(text, path.stem), text)]
-    tops = topics(vault, subject)
+    tops = topics(memory, subject)
     if not tops:
         return []
     per_topic = max(2_000, SUBJECT_LIMIT // len(tops))
     sources = []
     for x in tops:
-        text = _note_text(vault / x.note)[:per_topic]
-        if mine := _annotations_text(vault, subject, x.note):
+        text = _note_text(memory / x.note)[:per_topic]
+        if mine := _annotations_text(memory, subject, x.note):
             text += f"\n\n## User's annotations\n{mine[:1500]}"
         sources.append(Source(x.note, x.title, text))
     return sources
@@ -128,8 +128,8 @@ def _args(system: str, schema: dict) -> list[str]:
     ]
 
 
-def _receipt(vault: Path, now: datetime, request: str, intent: str, r: claude_cli.JsonResult, start: float) -> None:
-    write_receipt(vault, Receipt(
+def _receipt(memory: Path, now: datetime, request: str, intent: str, r: claude_cli.JsonResult, start: float) -> None:
+    write_receipt(memory, Receipt(
         request, "(ephemeral quiz: the content is not stored)", "hud", 2, now, int((time.monotonic() - start) * 1000),
         intent=intent, model=r.model, input_tokens=r.input_tokens, output_tokens=r.output_tokens,
         estimated_cost_usd=round(r.cost_usd, 6),
@@ -159,13 +159,13 @@ def _clean(p: dict, kind: str, notes: set[str], default: str | None) -> dict | N
     return item
 
 
-def generate(vault: Path, subject: str, count: int, kind: str, now: datetime, topic: str | None = None) -> dict:
+def generate(memory: Path, subject: str, count: int, kind: str, now: datetime, topic: str | None = None) -> dict:
     """Generates `count` questions (free text or multiple choice) from the topic or the whole subject."""
     if kind not in TYPES:
         raise ValueError(f"invalid type: {kind}")
     count = max(1, min(MAX_QUESTIONS, count))
-    subject_folder(vault, subject)
-    sources = material(vault, subject, topic)
+    subject_folder(memory, subject)
+    sources = material(memory, subject, topic)
     if not sources:
         raise ValueError("this subject has no topics yet")
     blocks = "\n\n".join(f'<topic path="{s.note}" title="{s.title}">\n{s.text}\n</topic>' for s in sources)
@@ -178,13 +178,13 @@ def generate(vault: Path, subject: str, count: int, kind: str, now: datetime, to
     start = time.monotonic()
     questions: list[dict] = []
     for _ in (1, 2):  # invalid JSON or no usable question: try once more
-        r = claude_cli.run_json(prompt, _args(GENERATE_SYSTEM, GENERATE_SCHEMA), cwd=vault, timeout_s=240)
+        r = claude_cli.run_json(prompt, _args(GENERATE_SYSTEM, GENERATE_SCHEMA), cwd=memory, timeout_s=240)
         data = r.structured if r.structured and "questions" in r.structured else extract_json(r.text)
         raw = (data or {}).get("questions") if isinstance(data, dict) else None
         questions = [x for x in (_clean(p, kind, notes, topic) for p in raw or [] if isinstance(p, dict)) if x]
         if questions:
             break
-    _receipt(vault, now, f"Quiz on {subject}{' (' + sources[0].title + ')' if topic else ''}: {count} {kind}", "studies.quiz", r, start)
+    _receipt(memory, now, f"Quiz on {subject}{' (' + sources[0].title + ')' if topic else ''}: {count} {kind}", "studies.quiz", r, start)
     if not questions:
         raise claude_cli.ClaudeFailed("the AI did not return valid questions; try again")
     titles = {s.note: s.title for s in sources}
@@ -195,13 +195,13 @@ def generate(vault: Path, subject: str, count: int, kind: str, now: datetime, to
     }
 
 
-def grade(vault: Path, subject: str, question: str, model_answer: str, answer: str, now: datetime,
+def grade(memory: Path, subject: str, question: str, model_answer: str, answer: str, now: datetime,
           topic: str | None = None) -> dict:
     """Grades a free-text answer against the model answer (and the topic, if any)."""
-    subject_folder(vault, subject)
+    subject_folder(memory, subject)
     context = ""
     if topic:
-        path = subject_note(vault, subject, topic)
+        path = subject_note(memory, subject, topic)
         context = f'<material path="{topic}">\n{_note_text(path)[:12_000]}\n</material>\n\n'
     prompt = (
         f"<quiz_grade>\n{context}<question>\n{question.strip()}\n</question>\n\n"
@@ -211,12 +211,12 @@ def grade(vault: Path, subject: str, question: str, model_answer: str, answer: s
     start = time.monotonic()
     data = None
     for _ in (1, 2):
-        r = claude_cli.run_json(prompt, _args(GRADE_SYSTEM, GRADE_SCHEMA), cwd=vault, timeout_s=120)
+        r = claude_cli.run_json(prompt, _args(GRADE_SYSTEM, GRADE_SCHEMA), cwd=memory, timeout_s=120)
         data = r.structured if r.structured and r.structured.get("verdict") else extract_json(r.text)
         if data and data.get("verdict") in ("correct", "partial", "wrong"):
             break
         data = None
-    _receipt(vault, now, f"Quiz grading for {subject}", "studies.quiz.grade", r, start)
+    _receipt(memory, now, f"Quiz grading for {subject}", "studies.quiz.grade", r, start)
     if not data:
         raise claude_cli.ClaudeFailed("the AI could not grade the answer; try again")
     return {

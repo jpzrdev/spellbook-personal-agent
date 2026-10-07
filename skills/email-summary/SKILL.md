@@ -1,6 +1,6 @@
 ---
 name: email-summary
-description: Reads the emails received since yesterday through the Gmail connector and summarizes only the important ones (deadlines, bills, people close to the user, pending replies). Read-only; made to run with ephemeral output (writes nothing in the vault).
+description: Reads the emails received since yesterday through the Gmail connector and summarizes only the important ones (deadlines, bills, people close to the user, pending replies). Read-only; made to run with ephemeral output (writes nothing in the memory).
 # Read-only on Gmail (claude.ai account connector). Sending, replying, forwarding and deleting are blocked.
 # Always ephemeral: whether run by a routine, from the Skills tab or on request, the summary stays only in the HUD (48 h).
 output: ephemeral
@@ -15,7 +15,7 @@ Uses the claude.ai account's Gmail connector. If the Gmail tools are not availab
 ## Rules
 
 - **Read-only.** Don't send, reply, archive, mark as read or delete anything.
-- **Don't write files.** The result is shown in the HUD and expires; nothing goes to the vault.
+- **Don't write files.** The result is shown in the HUD and expires; nothing goes to the memory.
 - Don't copy whole email bodies, document numbers, passwords, codes or payment links.
 
 ## Steps
