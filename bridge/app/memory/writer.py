@@ -1,4 +1,4 @@
-"""Writing to the vault: tasks and captures in raw/. Atomic writes (temporary file + replace)."""
+"""Writing to the memory: tasks and captures in raw/. Atomic writes (temporary file + replace)."""
 
 import os
 import re
@@ -10,8 +10,8 @@ from pathlib import Path
 from types import EllipsisType
 
 from app.locales import t
-from app.vault.reader import TASKS, read_text
-from app.vault.tasks import Priority, Task, format_task, parse_tasks, set_done
+from app.memory.reader import TASKS, read_text
+from app.memory.tasks import Priority, Task, format_task, parse_tasks, set_done
 
 
 class TaskNotFound(Exception):
@@ -24,7 +24,7 @@ def write_atomic(path: Path, content: str) -> None:
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
             f.write(content)
-        # On Windows the replace fails if another program (e.g. Obsidian) has the file
+        # On Windows the replace fails if another program (an editor, antivirus, sync) has the file
         # open at that instant; retry a few times.
         for attempt in range(5):
             try:
@@ -46,14 +46,14 @@ def slugify(text: str, max_len: int = 50) -> str:
 
 
 def add_task(
-    vault: Path,
+    memory: Path,
     text: str,
     *,
     due: date | None = None,
     priority: Priority | None = None,
     tags: list[str] | None = None,
 ) -> Task:
-    path = vault / TASKS
+    path = memory / TASKS
     current = read_text(path) or t("file.tasks_header")
     if not current.endswith("\n"):
         current += "\n"
@@ -63,7 +63,7 @@ def add_task(
 
 
 def update_task(
-    vault: Path,
+    memory: Path,
     task_id: str,
     today: date,
     *,
@@ -74,7 +74,7 @@ def update_task(
 ) -> Task:
     """Updates a task by id. Only checking/unchecking keeps the original line;
     changing text, due date or priority rewrites the line in the standard format."""
-    path = vault / TASKS
+    path = memory / TASKS
     content = read_text(path)
     task = next((x for x in parse_tasks(content) if x.id == task_id), None)
     if task is None:
@@ -103,11 +103,11 @@ def update_task(
     return next(x for x in parse_tasks(new) if x.line == task.line)
 
 
-def save_raw(vault: Path, text: str, now: datetime, source: str, title: str | None = None) -> Path:
-    """Quick capture: a new file in raw/ (never overwrites)."""
+def save_raw(memory: Path, text: str, now: datetime, source: str, title: str | None = None, kind: str = "capture") -> Path:
+    """Quick capture: a new file in raw/ (never overwrites). `kind`: capture, or answer (a chat answer to keep)."""
     title = title or text.strip().splitlines()[0][:60]
     base = f"{now:%Y-%m-%d-%H%M%S}-{slugify(title)}"
-    folder = vault / "raw"
+    folder = memory / "raw"
     path = folder / f"{base}.md"
     n = 2
     while path.exists():
@@ -115,7 +115,7 @@ def save_raw(vault: Path, text: str, now: datetime, source: str, title: str | No
         n += 1
     content = (
         "---\n"
-        "type: capture\n"
+        f"type: {kind}\n"
         f"created: {now.isoformat(timespec='seconds')}\n"
         f"source: {source}\n"
         "---\n"
@@ -125,10 +125,10 @@ def save_raw(vault: Path, text: str, now: datetime, source: str, title: str | No
     return path
 
 
-def save_raw_file(vault: Path, name: str, data: bytes, now: datetime) -> Path:
+def save_raw_file(memory: Path, name: str, data: bytes, now: datetime) -> Path:
     """Upload to raw/ keeping the extension; prefixed with the date so it never collides."""
     stem, ext = os.path.splitext(Path(name).name)
-    path = vault / "raw" / f"{now:%Y-%m-%d-%H%M%S}-{slugify(stem)}{ext.lower()}"
+    path = memory / "raw" / f"{now:%Y-%m-%d-%H%M%S}-{slugify(stem)}{ext.lower()}"
     n = 2
     while path.exists():
         path = path.with_name(f"{now:%Y-%m-%d-%H%M%S}-{slugify(stem)}-{n}{ext.lower()}")

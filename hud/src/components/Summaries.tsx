@@ -72,7 +72,7 @@ function SummaryItem({ e }: { e: Ephemeral }) {
               )
             }
           >
-            <Archive className="size-3.5" aria-hidden /> Save to vault
+            <Archive className="size-3.5" aria-hidden /> Save to memory
           </Button>
           <Button
             variant="ghost"
@@ -88,7 +88,7 @@ function SummaryItem({ e }: { e: Ephemeral }) {
   )
 }
 
-/** The "Today's summaries" card: ephemeral outputs (they don't stay in the vault). Hidden when there's nothing. */
+/** The "Today's summaries" card: ephemeral outputs (they don't stay in the memory). Hidden when there's nothing. */
 export function Summaries() {
   const { data: items = [] } = useEphemeral()
   if (items.length === 0) return null

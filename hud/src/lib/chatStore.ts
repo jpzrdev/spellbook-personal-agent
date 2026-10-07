@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react'
 import type { GandalfReply } from './api'
 
 // The conversation with Gandalf, shared by the Chat screen and the Orb. It lives in this browser's localStorage
-// (a per-person convenience; the official record of each request is the receipts in the vault).
+// (a per-person convenience; the official record of each request is the receipts in the memory).
 export type Turn = { id: string; question: string; reply?: GandalfReply; error?: string; at: string }
 
 const KEY = 'gandalf-chat'

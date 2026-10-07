@@ -12,7 +12,7 @@ if (-not (Test-Path "$root\.env")) {
 }
 
 Push-Location "$root\bridge"
-uv run python -m app.setup_vault
+uv run python -m app.setup_memory
 Pop-Location
 
 if (-not (Test-Path "$root\hud\node_modules")) {

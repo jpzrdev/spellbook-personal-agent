@@ -37,9 +37,9 @@ class GandalfReply:
     needs_confirmation: bool = False
 
 
-def ai_calls_today(vault: Path, day: date) -> int:
+def ai_calls_today(memory: Path, day: date) -> int:
     """Today's receipts with tier 2 or 3 (for the daily limit)."""
-    folder = vault / RECEIPTS / f"{day:%Y}" / f"{day:%m}"
+    folder = memory / RECEIPTS / f"{day:%Y}" / f"{day:%m}"
     total = 0
     for path in folder.glob(f"{day.isoformat()}-*.md"):
         try:
@@ -51,7 +51,7 @@ def ai_calls_today(vault: Path, day: date) -> int:
 
 
 def ask(
-    vault: Path,
+    memory: Path,
     text: str,
     source: str = "hud",
     force_tier: int | None = None,
@@ -67,13 +67,13 @@ def ask(
 
     # ---------- Tier 1 ----------
     if force_tier in (None, 1) and not note:  # a question about a note goes straight to the AI
-        ctx = tier1.Context(vault=vault, now=now, tz=clock.tz(), source=source)
+        ctx = tier1.Context(memory=memory, now=now, tz=clock.tz(), source=source)
         r = tier1.answer(text, ctx)
         if r or force_tier == 1:
             reply = r.text if r else t("router.not_understood")
             duration = ms()
             rid, _ = write_receipt(
-                vault,
+                memory,
                 Receipt(text, reply, source, 1, now, duration, intent=r.intent if r else "not_understood"),
             )
             return GandalfReply(rid, 1, r.intent if r else None, r is not None, reply, duration, r.data if r else {})
@@ -81,7 +81,7 @@ def ask(
     # ---------- daily AI limit ----------
     limit = get_settings().daily_call_limit
     if not confirm and limit > 0:
-        used = ai_calls_today(vault, now.date())
+        used = ai_calls_today(memory, now.date())
         if used >= limit:
             return GandalfReply(
                 None, 0, None, False,
@@ -89,7 +89,7 @@ def ask(
                 ms(), {"used": used, "limit": limit}, needs_confirmation=True,
             )
 
-    manager = tier3.manager(vault)
+    manager = tier3.manager(memory)
 
     # ---------- straight to Tier 3 ----------
     if force_tier == 3:
@@ -97,7 +97,7 @@ def ask(
         return GandalfReply(None, 3, "claude_code", True, t("router.tier3"), ms(), session_id=s.id)
 
     # ---------- Tier 2 ----------
-    d = tier2.decide(vault, text, now, previous, note)
+    d = tier2.decide(memory, text, now, previous, note)
     if d.action == "escalate":
         s = manager.create(
             d.task + (f"\n\n(The question is about the note `{note[0]}`.)" if note else ""),
@@ -117,7 +117,7 @@ def ask(
         task = p["query"]
         if p.get("update"):
             try:
-                task += UPDATE_CONTEXT.format(saved=library.context_for_update(vault, p["update"]))
+                task += UPDATE_CONTEXT.format(saved=library.context_for_update(memory, p["update"]))
             except (FileNotFoundError, library.InvalidTopic):
                 p["update"] = None
         s = manager.create(
@@ -134,10 +134,10 @@ def ask(
         )
 
     if d.action == "capture":
-        reply, data = triage.execute(vault, clock.tz(), d.items, now, text, source)
+        reply, data = triage.execute(memory, clock.tz(), d.items, now, text, source)
         duration = ms()
         rid, _ = write_receipt(
-            vault,
+            memory,
             Receipt(
                 text, reply, source, 2, now, duration,
                 intent="capture", model=d.model,
@@ -149,7 +149,7 @@ def ask(
 
     duration = ms()
     rid, _ = write_receipt(
-        vault,
+        memory,
         Receipt(
             text, d.reply, source, 2, now, duration,
             intent="answer", model=d.model,

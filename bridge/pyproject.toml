@@ -1,7 +1,7 @@
 [project]
 name = "bridge"
 version = "0.1.0"
-description = "Bridge: Gandalf's backend (router + vault)"
+description = "Bridge: Gandalf's backend (router + memory)"
 requires-python = ">=3.12"
 dependencies = [
     "apscheduler>=3.11,<4",
@@ -14,6 +14,7 @@ dependencies = [
     "python-multipart>=0.0.32",
     "python-ulid>=4.0.1",
     "pywebpush>=2.5.0",
+    "trafilatura>=2",
     "tzdata>=2026.4",
     "uvicorn[standard]>=0.54.0",
     "watchdog>=6.0.0",

@@ -22,7 +22,7 @@ const LOOK: Record<string, { icon: ReactNode; color: Color }> = {
   'sync-calendar': { icon: <CalendarSync />, color: 'silver' },
   'plan-week': { icon: <CalendarRange />, color: 'wood' },
   'prepare-studies': { icon: <BookOpen />, color: 'violet' },
-  'answer-from-vault': { icon: <MessageSquareText />, color: 'primary-light' },
+  'answer-from-memory': { icon: <MessageSquareText />, color: 'primary-light' },
 }
 const DEFAULT = { icon: <Wand2 />, color: 'primary' as Color }
 

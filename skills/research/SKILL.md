@@ -1,6 +1,6 @@
 ---
 name: research
-description: Researches on the web a topic that depends on current information (immigration, visas, prices, laws, trips, products) and delivers an organized report with sources. Runs with web search and fetch only, without access to the vault; the user decides afterwards whether to keep it.
+description: Researches on the web a topic that depends on current information (immigration, visas, prices, laws, trips, products) and delivers an organized report with sources. Runs with web search and fetch only, without access to the memory; the user decides afterwards whether to keep it.
 allowed-tools: WebSearch, WebFetch
 output: research
 ---

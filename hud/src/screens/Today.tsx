@@ -27,7 +27,7 @@ import { focusRing, solid, sunken } from '../components/ui/styles'
 import type { AgendaEvent, RoutineToday, Task, Today as TodayData } from '../lib/api'
 import { cn } from '../lib/cn'
 import { dueStatus, shortDate } from '../lib/dates'
-import { useCapture, useCompleteTask, useCreateTask, useTasks, useToday } from '../lib/queries'
+import { useCapture, useClip, useCompleteTask, useCreateTask, useTasks, useToday } from '../lib/queries'
 
 function DueBadge({ due, today }: { due: string | null; today: string }) {
   const d = dueStatus(due, today)
@@ -198,22 +198,30 @@ function Routines({ routines }: { routines: RoutineToday[] }) {
   )
 }
 
+// A link on its own (optionally followed by a comment) is clipped: the page's text goes to raw/.
+const LINK = /^(https?:\/\/\S+)(?:\s+(.*))?$/s
+
 function QuickCapture() {
   const capture = useCapture()
+  const clip = useClip()
   const toast = useToast()
   const [text, setText] = useState('')
+  const link = LINK.exec(text.trim())
+  const pending = capture.isPending || clip.isPending
 
   function save(e: FormEvent) {
     e.preventDefault()
     const t = text.trim()
     if (!t) return
-    capture.mutate(t, {
-      onSuccess: (r) => {
+    const done = {
+      onSuccess: (r: { file: string }) => {
         setText('')
         toast('success', `Saved to ${r.file}`)
       },
-      onError: (err) => toast('error', `Not saved: ${err.message}`),
-    })
+      onError: (err: Error) => toast('error', `Not saved: ${err.message}`),
+    }
+    if (link) clip.mutate({ url: link[1], note: link[2] ?? '' }, done)
+    else capture.mutate(t, done)
   }
 
   return (
@@ -232,11 +240,11 @@ function QuickCapture() {
         aria-label="Quick capture to raw/"
         value={text}
         onChange={(e) => setText(e.target.value)}
-        placeholder="Jot down anything… it goes to raw/"
+        placeholder="Jot down anything or paste a link… it goes to raw/"
         className="h-11 min-w-0 flex-1 bg-transparent px-2 placeholder:text-ink-muted/70 focus-visible:outline-none"
       />
-      <Button type="submit" size="sm" disabled={!text.trim() || capture.isPending}>
-        Save
+      <Button type="submit" size="sm" disabled={!text.trim() || pending}>
+        {link ? (clip.isPending ? 'Clipping…' : 'Clip page') : 'Save'}
       </Button>
     </form>
   )

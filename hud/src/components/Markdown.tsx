@@ -17,7 +17,7 @@ export function Markdown({ text, className }: { text: string; className?: string
         '[&_pre]:overflow-x-auto [&_pre]:rounded-control [&_pre]:p-3 [&_pre]:shadow-sunken-sm [&_pre_code]:shadow-none',
         '[&_table]:w-full [&_table]:text-sm [&_td]:border-b [&_td]:border-shade/40 [&_td]:p-1.5 [&_th]:p-1.5 [&_th]:text-left',
         '[&_hr]:border-shade/50 [&_input]:mr-2 [&_input]:accent-primary',
-        // Obsidian callouts (> [!note]- Answer) become collapsible blocks
+        // Callouts (> [!note]- Answer) become collapsible blocks
         '[&_details]:rounded-control [&_details]:px-4 [&_details]:py-2 [&_details]:shadow-sunken-sm [&_details>*+*]:mt-2',
         '[&_summary]:cursor-pointer [&_summary]:text-sm [&_summary]:font-semibold [&_summary]:text-primary-text',
         className,

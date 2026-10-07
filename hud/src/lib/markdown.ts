@@ -1,15 +1,15 @@
-/** [[path/note|alias]] (Obsidian) → a markdown link to the Vault screen. */
+/** [[path/note|alias]] (wiki link) → a markdown link to the Memory screen. */
 export function wikilinks(text: string): string {
   return text.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_m, target: string, alias?: string) => {
     const path = target.trim().endsWith('.md') ? target.trim() : `${target.trim()}.md`
     const label = (alias ?? target.split('/').pop() ?? target).trim()
-    return `[${label}](/vault?note=${encodeURIComponent(path)})`
+    return `[${label}](/memory?note=${encodeURIComponent(path)})`
   })
 }
 
 type Node = { type: string; value?: string; children?: Node[]; data?: Record<string, unknown> }
 
-/** remark plugin: Obsidian callouts (`> [!note]- Title`) become <details>/<summary>.
+/** remark plugin: callouts (`> [!note]- Title`) become <details>/<summary>.
  * With `-` they start closed (e.g. the answer to a review question); without it, open. */
 export function remarkCallouts() {
   const visit = (node: Node) => {

@@ -197,11 +197,11 @@ MESSAGES = {
     ),
     "router.limit": "You have already used {used} AI calls today (limit {limit}). Confirm to continue.",
     "router.tier3": "I opened a Claude Code session for this.",
-    "router.escalated": "This needs work in the vault; I opened a Claude Code session.",
-    "router.research": "I'll research this on the web: **{topic}**. When it's done the result shows up here and you decide whether to save it in the vault.",
+    "router.escalated": "This needs work in the memory; I opened a Claude Code session.",
+    "router.research": "I'll research this on the web: **{topic}**. When it's done the result shows up here and you decide whether to save it in the memory.",
     "tier2.no_answer": "I couldn't come up with an answer right now.",
     "speech.details_on_screen": "The details are on the screen.",
-    # Written into vault files created by the code.
+    # Written into memory files created by the code.
     "file.tasks_header": "# Tasks\n",
     "file.reminders_header": (
         "# Reminders\n\n"

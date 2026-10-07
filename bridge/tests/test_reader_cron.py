@@ -2,12 +2,12 @@ from datetime import date
 
 from app import cron
 from app.routines import status
-from app.vault import reader
+from app.memory import reader
 from tests.conftest import NOW, TZ
 
 
-def test_agenda_sorts_and_extracts_location(vault):
-    events = reader.read_agenda(vault, date(2026, 10, 3))
+def test_agenda_sorts_and_extracts_location(memory):
+    events = reader.read_agenda(memory, date(2026, 10, 3))
     assert [(e.start, e.end, e.title, e.location) for e in events] == [
         (None, None, "Municipal holiday", None),
         ("09:00", "10:30", "Calculus II lecture", "Room 204"),
@@ -15,8 +15,8 @@ def test_agenda_sorts_and_extracts_location(vault):
     ]
 
 
-def test_agenda_day_without_file(vault):
-    assert reader.read_agenda(vault, date(2026, 10, 9)) == []
+def test_agenda_day_without_file(memory):
+    assert reader.read_agenda(memory, date(2026, 10, 9)) == []
 
 
 def test_cron_standard_weekday():
@@ -41,8 +41,8 @@ def test_cron_description_in_portuguese():
     assert cron.describe("0 7-22/2 * * *", "pt-BR") == "a cada 2h, das 07h às 22h"
 
 
-def test_routines_today_only_active(vault):
-    items = status.routines_today(vault, NOW, TZ)
+def test_routines_today_only_active(memory):
+    items = status.routines_today(memory, NOW, TZ)
     # Saturday: only the daily routine; the Mon–Fri one doesn't run and the paused one is ignored.
     assert items == [
         {"slug": "compile-raw", "name": "Compile raw", "time": "23:00", "schedule": "every day at 23:00", "status": "pending"}

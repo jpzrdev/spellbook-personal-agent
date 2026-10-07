@@ -1,4 +1,4 @@
-"""Gandalf's reminders in `life/reminders.md` (editable in Obsidian).
+"""Gandalf's reminders in `life/reminders.md` (editable in the HUD's Memory tab).
 
 One line per reminder:
 - one-off:   `- [ ] Take the laundry out ⏰ 2026-10-03 18:30 🆔 k3j9x2`
@@ -15,8 +15,8 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from app.locales import t
-from app.vault.reader import read_text
-from app.vault.writer import write_atomic
+from app.memory.reader import read_text
+from app.memory.writer import write_atomic
 
 REMINDERS = Path("life/reminders.md")
 
@@ -106,8 +106,8 @@ def format_reminder(reminder: Reminder) -> str:
     return " ".join(parts)
 
 
-def read(vault: Path, tz: ZoneInfo) -> list[Reminder]:
-    return parse(read_text(vault / REMINDERS), tz)
+def read(memory: Path, tz: ZoneInfo) -> list[Reminder]:
+    return parse(read_text(memory / REMINDERS), tz)
 
 
 def _validate(text: str, when: datetime | None, recurrence: str | None, tz: ZoneInfo) -> None:
@@ -126,10 +126,10 @@ def _validate(text: str, when: datetime | None, recurrence: str | None, tz: Zone
         raise InvalidReminder("the text cannot contain the markers ⏰ 🔁 ✅ 🆔 or a line break")
 
 
-def add(vault: Path, tz: ZoneInfo, text: str, *, when: datetime | None = None, recurrence: str | None = None) -> Reminder:
+def add(memory: Path, tz: ZoneInfo, text: str, *, when: datetime | None = None, recurrence: str | None = None) -> Reminder:
     text = text.strip()
     _validate(text, when, recurrence, tz)
-    path = vault / REMINDERS
+    path = memory / REMINDERS
     current = read_text(path) or t("file.reminders_header")
     if not current.endswith("\n"):
         current += "\n"
@@ -138,11 +138,11 @@ def add(vault: Path, tz: ZoneInfo, text: str, *, when: datetime | None = None, r
         when=when.astimezone(tz) if when else None, recurrence=recurrence,
     )
     write_atomic(path, current + format_reminder(new) + "\n")
-    return next(x for x in read(vault, tz) if x.id == new.id)
+    return next(x for x in read(memory, tz) if x.id == new.id)
 
 
-def _rewrite(vault: Path, tz: ZoneInfo, reminder_id: str, change) -> Reminder | None:
-    path = vault / REMINDERS
+def _rewrite(memory: Path, tz: ZoneInfo, reminder_id: str, change) -> Reminder | None:
+    path = memory / REMINDERS
     content = read_text(path)
     target = next((x for x in parse(content, tz) if x.id == reminder_id), None)
     if target is None:
@@ -163,7 +163,7 @@ def _rewrite(vault: Path, tz: ZoneInfo, reminder_id: str, change) -> Reminder | 
 
 
 def update(
-    vault: Path,
+    memory: Path,
     tz: ZoneInfo,
     reminder_id: str,
     *,
@@ -187,8 +187,8 @@ def update(
             x.done_at = (now or datetime.now(tz)) if done else None
         return x
 
-    return _rewrite(vault, tz, reminder_id, change)
+    return _rewrite(memory, tz, reminder_id, change)
 
 
-def remove(vault: Path, tz: ZoneInfo, reminder_id: str) -> None:
-    _rewrite(vault, tz, reminder_id, lambda x: None)
+def remove(memory: Path, tz: ZoneInfo, reminder_id: str) -> None:
+    _rewrite(memory, tz, reminder_id, lambda x: None)

@@ -4,7 +4,7 @@ import { useSyncExternalStore } from 'react'
 // - moment: a short reaction (happy, confused, talking, petted) triggered by the rest of the HUD;
 // - energy: drops over time without conversation (~10 points per hour) and goes up when chatting or petting;
 // - night: between 23:00 and 6:00 it sleeps.
-// The energy lives in this browser's localStorage (a convenience; not vault data).
+// The energy lives in this browser's localStorage (a convenience; not memory data).
 
 export type Moment = 'happy' | 'confused' | 'talking' | 'petted'
 

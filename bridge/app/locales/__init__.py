@@ -1,4 +1,4 @@
-"""The assistant's language: what Gandalf says and the notes it writes in the vault.
+"""The assistant's language: what Gandalf says and the notes it writes in the memory.
 
 Code, API and HUD are always in English. `GANDALF_LANGUAGE` (en | pt-BR) picks one of these modules,
 which hold the Tier 1 rules (regexes for commands, dates and times) and the replies built without AI.

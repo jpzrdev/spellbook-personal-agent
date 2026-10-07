@@ -1,4 +1,4 @@
-"""Gandalf's Tier 1: rule-based intents answered straight from the vault. No network, no AI.
+"""Gandalf's Tier 1: rule-based intents answered straight from the memory. No network, no AI.
 
 The rules (regexes) and the replies come from the user's language (`app.locales`).
 """
@@ -14,13 +14,13 @@ from zoneinfo import ZoneInfo
 from app import locales
 from app.config import get_settings
 from app.locales import t
-from app.vault import reader, writer
-from app.vault.tasks import Priority, Task, sort_by_priority
+from app.memory import reader, writer
+from app.memory.tasks import Priority, Task, sort_by_priority
 
 
 @dataclass
 class Context:
-    vault: Path
+    memory: Path
     now: datetime
     tz: ZoneInfo
     source: str = "hud"
@@ -134,8 +134,8 @@ def intent_agenda(ctx: Context, m: re.Match) -> Reply:
     tomorrow = bool(m.group("when")) and locales.current().TOMORROW_WORD in m.group("when")
     day = ctx.today + timedelta(days=1) if tomorrow else ctx.today
     label = t("tomorrow") if tomorrow else t("today")
-    events = reader.read_agenda(ctx.vault, day)
-    tasks = [x for x in sort_by_priority(reader.read_tasks(ctx.vault), day) if x.due and x.due <= day]
+    events = reader.read_agenda(ctx.memory, day)
+    tasks = [x for x in sort_by_priority(reader.read_tasks(ctx.memory), day) if x.due and x.due <= day]
 
     lines = [t("agenda.title", label=label.capitalize(), date=date_long(day))]
     lines += _format_events(events) if events else [t("agenda.empty")]
@@ -149,7 +149,7 @@ def intent_agenda(ctx: Context, m: re.Match) -> Reply:
 
 
 def intent_priorities(ctx: Context, m: re.Match) -> Reply:
-    top = sort_by_priority(reader.read_tasks(ctx.vault), ctx.today)[:3]
+    top = sort_by_priority(reader.read_tasks(ctx.memory), ctx.today)[:3]
     if not top:
         return Reply("priorities", t("priorities.none"), {"tasks": []})
     lines = [t("priorities.title")] + [_format_task(x, ctx.today) for x in top]
@@ -157,7 +157,7 @@ def intent_priorities(ctx: Context, m: re.Match) -> Reply:
 
 
 def intent_tasks(ctx: Context, m: re.Match) -> Reply:
-    open_tasks = sort_by_priority(reader.read_tasks(ctx.vault), ctx.today)
+    open_tasks = sort_by_priority(reader.read_tasks(ctx.memory), ctx.today)
     if not open_tasks:
         return Reply("tasks", t("priorities.none"), {"tasks": []})
     shown = open_tasks[:10]
@@ -186,7 +186,7 @@ def intent_add_task(ctx: Context, m: re.Match) -> Reply:
     )
     text = _strip_connectors(text) or original.strip()
 
-    task = writer.add_task(ctx.vault, text, due=due, priority=priority, tags=tags)
+    task = writer.add_task(ctx.memory, text, due=due, priority=priority, tags=tags)
     due_text = t("task.added_due", date=locales.current().short_date(task.due)) if task.due else ""
     return Reply("add_task", t("task.added", due=due_text, text=task.text), {"task": task_dict(task)})
 
@@ -195,17 +195,17 @@ def intent_note(ctx: Context, m: re.Match) -> Reply | None:
     text = m.group("rest").strip()
     if locales.current().DATE_HINT_RE.search(normalize(text)):
         return None
-    path = writer.save_raw(ctx.vault, text, ctx.now, ctx.source)
-    rel = path.relative_to(ctx.vault).as_posix()
+    path = writer.save_raw(ctx.memory, text, ctx.now, ctx.source)
+    rel = path.relative_to(ctx.memory).as_posix()
     return Reply("note", t("note.saved", path=rel), {"file": rel})
 
 
 def intent_reminders(ctx: Context, m: re.Match) -> Reply:
     from app.gandalf.triage import describe_recurrence, describe_when
     from app.reminders import reminder_json
-    from app.vault import reminders
+    from app.memory import reminders
 
-    pending = [x for x in reminders.read(ctx.vault, ctx.tz) if not x.done]
+    pending = [x for x in reminders.read(ctx.memory, ctx.tz) if not x.done]
     if not pending:
         return Reply("reminders", t("reminders.none"), {"reminders": []})
     one_off = sorted((x for x in pending if x.when), key=lambda x: x.when)
@@ -219,7 +219,7 @@ def intent_reminders(ctx: Context, m: re.Match) -> Reply:
 def intent_routines(ctx: Context, m: re.Match) -> Reply:
     from app import cron
 
-    routines = reader.read_routines(ctx.vault)
+    routines = reader.read_routines(ctx.memory)
     if not routines:
         return Reply("routines", t("routines.none"), {"routines": []})
     language = get_settings().language
@@ -246,7 +246,7 @@ def answer(text: str, ctx: Context) -> Reply | None:
     from app.gandalf import triage
 
     if reminder := triage.parse_reminder(text, ctx.now):
-        reply, data = triage.create_reminder(ctx.vault, ctx.tz, reminder, ctx.now)
+        reply, data = triage.create_reminder(ctx.memory, ctx.tz, reminder, ctx.now)
         return Reply("reminder", reply, {"reminders": [data]})
     norm = normalize(text)
     for intent, pattern in locales.current().INTENTS:

@@ -1,4 +1,4 @@
-"""Reading the vault: tasks, agenda and routines. Files only, no network and no AI."""
+"""Reading the memory: tasks, agenda and routines. Files only, no network and no AI."""
 
 import re
 from dataclasses import dataclass
@@ -8,7 +8,7 @@ from pathlib import Path
 import frontmatter
 
 from app import cron
-from app.vault.tasks import Task, parse_tasks
+from app.memory.tasks import Task, parse_tasks
 
 TASKS = Path("life/tasks.md")
 AGENDA = Path("life/agenda")
@@ -40,7 +40,7 @@ class Routine:
     skill: str | None
     action: str | None
     description: str
-    output: str = "vault"  # vault | ephemeral
+    output: str = "memory"  # memory | ephemeral
     notify: bool = False  # phone push when it finishes fine (failures always notify)
 
 
@@ -48,8 +48,8 @@ def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8") if path.is_file() else ""
 
 
-def read_tasks(vault: Path) -> list[Task]:
-    return parse_tasks(read_text(vault / TASKS))
+def read_tasks(memory: Path) -> list[Task]:
+    return parse_tasks(read_text(memory / TASKS))
 
 
 def _hour(h: str | None) -> str | None:
@@ -59,8 +59,8 @@ def _hour(h: str | None) -> str | None:
     return f"{int(hh):02d}:{mm}"
 
 
-def read_agenda(vault: Path, day: date) -> list[AgendaEvent]:
-    path = vault / AGENDA / f"{day.isoformat()}.md"
+def read_agenda(memory: Path, day: date) -> list[AgendaEvent]:
+    path = memory / AGENDA / f"{day.isoformat()}.md"
     if not path.is_file():
         return []
     events: list[AgendaEvent] = []
@@ -78,8 +78,8 @@ def read_agenda(vault: Path, day: date) -> list[AgendaEvent]:
     return sorted(events, key=lambda e: (e.start is not None, e.start or ""))
 
 
-def read_routines(vault: Path) -> list[Routine]:
-    folder = vault / ROUTINES
+def read_routines(memory: Path) -> list[Routine]:
+    folder = memory / ROUTINES
     if not folder.is_dir():
         return []
     routines: list[Routine] = []
@@ -100,7 +100,7 @@ def read_routines(vault: Path) -> list[Routine]:
                 skill=meta.get("skill") or None,
                 action=meta.get("action") or None,
                 description=post.content.strip(),
-                output="ephemeral" if meta.get("output") == "ephemeral" else "vault",
+                output="ephemeral" if meta.get("output") == "ephemeral" else "memory",
                 notify=bool(meta.get("notify", False)),
             )
         )

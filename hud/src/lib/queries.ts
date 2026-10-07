@@ -29,11 +29,14 @@ import {
   type Task,
   type Today,
   type TreeNode,
-  type VaultNote,
+  type MemoryNote,
+  type Backlink,
+  type MemoryHealth,
+  type SearchResult,
 } from './api'
 import { chat } from './chatStore'
 
-// Periodic refetch + on window focus: edits made in Obsidian show up by themselves.
+// Periodic refetch + on window focus: what Gandalf or another device wrote shows up by itself.
 export function useToday() {
   return useQuery({ queryKey: ['today'], queryFn: () => api<Today>('/today'), refetchInterval: 30_000 })
 }
@@ -78,7 +81,12 @@ export function useCreateTask() {
 }
 
 export function useCapture() {
-  return useMutation({ mutationFn: (text: string) => post<{ file: string }>('/raw', { text }) })
+  return useMutation({ mutationFn: (c: string | { text: string; title?: string; kind?: 'capture' | 'answer' }) => post<{ file: string }>('/raw', typeof c === 'string' ? { text: c } : c) })
+}
+
+/** Web clipper: the page's main text goes to raw/ as Markdown. */
+export function useClip() {
+  return useMutation({ mutationFn: (c: { url: string; note?: string }) => post<{ file: string }>('/raw/url', c) })
 }
 
 export function useAsk() {
@@ -267,7 +275,7 @@ export function useGenerateStudy() {
   })
 }
 
-// ---------- Receipts, costs and vault ----------
+// ---------- Receipts, costs and memory ----------
 
 export function useReceipts(filters: { days: number; tier?: number | null; source?: string | null }) {
   const q = new URLSearchParams({ days: String(filters.days), limit: '500' })
@@ -277,7 +285,7 @@ export function useReceipts(filters: { days: number; tier?: number | null; sourc
 }
 
 export function useReceipt(id: string | null) {
-  return useQuery({ queryKey: ['receipt', id], queryFn: () => api<Receipt & VaultNote>(`/receipts/${id}`), enabled: !!id })
+  return useQuery({ queryKey: ['receipt', id], queryFn: () => api<Receipt & MemoryNote>(`/receipts/${id}`), enabled: !!id })
 }
 
 export function useCosts(days: number) {
@@ -285,14 +293,68 @@ export function useCosts(days: number) {
 }
 
 export function useTree() {
-  return useQuery({ queryKey: ['tree'], queryFn: () => api<TreeNode[]>('/vault/tree') })
+  return useQuery({ queryKey: ['tree'], queryFn: () => api<TreeNode[]>('/memory/tree') })
 }
 
 export function useNote(path: string | null) {
   return useQuery({
     queryKey: ['note', path],
-    queryFn: () => api<VaultNote>(`/vault/note?path=${encodeURIComponent(path ?? '')}`),
+    queryFn: () => api<MemoryNote>(`/memory/note?path=${encodeURIComponent(path ?? '')}`),
     enabled: !!path,
+  })
+}
+
+export function useBacklinks(path: string | null) {
+  return useQuery({
+    queryKey: ['backlinks', path],
+    queryFn: () => api<Backlink[]>(`/memory/backlinks?path=${encodeURIComponent(path ?? '')}`),
+    enabled: !!path,
+  })
+}
+
+export function useMemorySearch(q: string) {
+  return useQuery({
+    queryKey: ['memory-search', q],
+    queryFn: () => api<SearchResult[]>(`/memory/search?q=${encodeURIComponent(q)}`),
+    enabled: q.length >= 2,
+    placeholderData: (previous) => previous,
+  })
+}
+
+export function useMemoryHealth() {
+  return useQuery({ queryKey: ['memory-health'], queryFn: () => api<MemoryHealth>('/memory/health') })
+}
+
+/** After any change to the memory's files: the tree, the open notes, backlinks and health. */
+function useInvalidateMemory() {
+  const qc = useQueryClient()
+  return () =>
+    Promise.all(['tree', 'note', 'backlinks', 'memory-health', 'memory-search'].map((k) => qc.invalidateQueries({ queryKey: [k] })))
+}
+
+export function useSaveNote() {
+  const invalidate = useInvalidateMemory()
+  return useMutation({
+    mutationFn: (n: { path: string; content: string; base: string | null }) => put<{ path: string; version: string }>('/memory/note', n),
+    onSuccess: invalidate,
+  })
+}
+
+export function useCreateNote() {
+  const invalidate = useInvalidateMemory()
+  return useMutation({ mutationFn: (n: { path: string; content: string }) => post<{ path: string }>('/memory/note', n), onSuccess: invalidate })
+}
+
+export function useDeleteNote() {
+  const invalidate = useInvalidateMemory()
+  return useMutation({ mutationFn: (path: string) => del<{ trash: string }>(`/memory/note?path=${encodeURIComponent(path)}`), onSuccess: invalidate })
+}
+
+export function useMoveNote() {
+  const invalidate = useInvalidateMemory()
+  return useMutation({
+    mutationFn: (m: { src: string; dst: string }) => post<{ path: string; updated_links: string[] }>('/memory/move', m),
+    onSuccess: invalidate,
   })
 }
 

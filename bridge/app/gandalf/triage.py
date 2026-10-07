@@ -23,7 +23,7 @@ from app import reminders as reminder_scheduler
 from app.config import get_settings
 from app.gandalf.tier1 import date_long, extract_date, task_dict
 from app.locales import t
-from app.vault import reminders, writer
+from app.memory import reminders, writer
 
 
 def norm_aligned(text: str) -> str:
@@ -161,9 +161,9 @@ def _no_devices() -> str:
 
 # ---------- execution ----------
 
-def create_reminder(vault: Path, tz: ZoneInfo, item: ParsedReminder, now: datetime, hint: bool = True) -> tuple[str, dict]:
-    x = reminders.add(vault, tz, item.text, when=item.when, recurrence=item.recurrence)
-    reminder_scheduler.reload_if_running(vault)
+def create_reminder(memory: Path, tz: ZoneInfo, item: ParsedReminder, now: datetime, hint: bool = True) -> tuple[str, dict]:
+    x = reminders.add(memory, tz, item.text, when=item.when, recurrence=item.recurrence)
+    reminder_scheduler.reload_if_running(memory)
     when = describe_recurrence(x.recurrence) if x.recurring else describe_when(x.when, now)
     text = t("capture.reminder", text=x.text, when=when)
     return text + (_no_devices() if hint else ""), reminder_scheduler.reminder_json(x)
@@ -187,7 +187,7 @@ def _reminder_from_item(item: dict, now: datetime) -> ParsedReminder:
     return ParsedReminder(text, recurrence=f"{m} {h} * * {','.join(map(str, days)) if days else '*'}")
 
 
-def execute(vault: Path, tz: ZoneInfo, items: list[dict], now: datetime, request: str, source: str) -> tuple[str, dict]:
+def execute(memory: Path, tz: ZoneInfo, items: list[dict], now: datetime, request: str, source: str) -> tuple[str, dict]:
     """Saves the items decided by Tier 2. Events become proposals (they don't go straight to the calendar)."""
     lines: list[str] = []
     data: dict = {"reminders": [], "tasks": [], "notes": [], "proposals": [], "errors": []}
@@ -195,7 +195,7 @@ def execute(vault: Path, tz: ZoneInfo, items: list[dict], now: datetime, request
         kind = item.get("type")
         try:
             if kind == "reminder":
-                text, j = create_reminder(vault, tz, _reminder_from_item(item, now), now, hint=False)
+                text, j = create_reminder(memory, tz, _reminder_from_item(item, now), now, hint=False)
                 lines.append(text)
                 data["reminders"].append(j)
             elif kind == "task":
@@ -204,7 +204,7 @@ def execute(vault: Path, tz: ZoneInfo, items: list[dict], now: datetime, request
                     raise ValueError("task without text")
                 due = date.fromisoformat(item["due"][:10]) if item.get("due") else None
                 priority = item.get("priority") if item.get("priority") in ("high", "medium", "low") else None
-                x = writer.add_task(vault, text[:300], due=due, priority=priority)
+                x = writer.add_task(memory, text[:300], due=due, priority=priority)
                 due_text = t("capture.task_due", date=date_long(x.due)) if x.due else ""
                 lines.append(t("capture.task", text=x.text, due=due_text))
                 data["tasks"].append(task_dict(x))
@@ -212,8 +212,8 @@ def execute(vault: Path, tz: ZoneInfo, items: list[dict], now: datetime, request
                 text = str(item.get("text") or "").strip()
                 if not text:
                     raise ValueError("note without text")
-                path = writer.save_raw(vault, text, now, source)
-                rel = path.relative_to(vault).as_posix()
+                path = writer.save_raw(memory, text, now, source)
+                rel = path.relative_to(memory).as_posix()
                 lines.append(t("capture.note", path=rel))
                 data["notes"].append(rel)
             elif kind == "event":

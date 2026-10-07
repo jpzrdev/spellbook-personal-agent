@@ -32,7 +32,7 @@ def resolve_command() -> list[str]:
     configured = get_settings().claude_bin.strip().strip('"')
     if configured:
         # A .py runs with the Bridge's Python (e.g. the tests' fake CLI, for demos).
-        # A relative path is resolved from the Bridge directory (the subprocess runs inside the vault).
+        # A relative path is resolved from the Bridge directory (the subprocess runs inside the memory).
         path = str(Path(configured).resolve()) if ("/" in configured or "\\" in configured) else configured
         return [sys.executable, path] if path.endswith(".py") else [path]
     path = shutil.which("claude")

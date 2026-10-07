@@ -7,7 +7,7 @@ from app.config import get_settings
 from app.library import list_topics
 from app.locales import en
 from app.skills.catalog import list_skills
-from app.vault.reader import read_text
+from app.memory.reader import read_text
 
 ABOUT_ME_LIMIT = 4000
 INDEX_LIMIT = 3000
@@ -18,25 +18,25 @@ def _trim(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[:limit].rstrip() + "\n…(truncated)"
 
 
-def build_context(vault: Path, now: datetime) -> str:
+def build_context(memory: Path, now: datetime) -> str:
     parts = [f"Now: {en.date_long(now.date())}, {now:%Y}, {now:%H:%M} ({get_settings().timezone})."]
     # Short calendar: the model gets weekday ↔ date wrong when it has to work it out by itself.
     days = [now.date() + timedelta(days=i) for i in range(15)]
     parts.append("Next days: " + "; ".join(f"{en.WEEKDAY_NAMES[d.weekday()][:3]} {d.isoformat()}" for d in days) + ".")
 
     about_me = []
-    folder = vault / "wiki" / "about-me"
+    folder = memory / "wiki" / "about-me"
     if folder.is_dir():
         for path in sorted(folder.glob("*.md")):
             about_me.append(f"### {path.stem}\n{read_text(path).strip()}")
     if about_me:
         parts.append("## About the user\n" + _trim("\n\n".join(about_me), ABOUT_ME_LIMIT))
 
-    index = read_text(vault / "wiki" / "_master-index.md")
+    index = read_text(memory / "wiki" / "_master-index.md")
     if index:
         parts.append("## Wiki index (_master-index.md)\n" + _trim(index, INDEX_LIMIT))
 
-    topics = list_topics(vault)
+    topics = list_topics(memory)
     if topics:
         lines = [f"- `{x['slug']}`: {x['title']} ({x['kind']}, updated {x['updated'] or '?'})" for x in topics[:30]]
         parts.append("## Library (research and plans already saved)\n" + "\n".join(lines))

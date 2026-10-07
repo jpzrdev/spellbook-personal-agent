@@ -19,8 +19,8 @@ def wait_for_session(client, sid: str, timeout: float = 15) -> dict:
     raise AssertionError("session did not finish")
 
 
-def receipts(vault: Path) -> list[frontmatter.Post]:
-    return [frontmatter.load(p) for p in sorted((vault / "receipts").rglob("*.md")) if not p.name.startswith(".tmp-")]
+def receipts(memory: Path) -> list[frontmatter.Post]:
+    return [frontmatter.load(p) for p in sorted((memory / "receipts").rglob("*.md")) if not p.name.startswith(".tmp-")]
 
 
 # ---------- routines: CRUD ----------
@@ -33,15 +33,15 @@ def test_list_routines(client):
     assert routines["paused"]["next"] is None
 
 
-def test_create_routine_writes_md(client, vault):
+def test_create_routine_writes_md(client, memory):
     r = client.post("/routines", json={
         "name": "Calculus review", "cron": "30 19 * * 1,3,5", "tier": 3,
         "skill": "review-studies", "description": "Review calculus II.",
     })
     assert r.status_code == 201
     assert r.json()["slug"] == "calculus-review" and r.json()["schedule"] == "Mon, Wed, Fri at 19:30"
-    post = frontmatter.load(vault / "life/routines/calculus-review.md")
-    assert 'cron: "30 19 * * 1,3,5"' in (vault / "life/routines/calculus-review.md").read_text(encoding="utf-8")
+    post = frontmatter.load(memory / "life/routines/calculus-review.md")
+    assert 'cron: "30 19 * * 1,3,5"' in (memory / "life/routines/calculus-review.md").read_text(encoding="utf-8")
     assert post["cron"] == "30 19 * * 1,3,5" and post["active"] is True and post["skill"] == "review-studies"
     assert post.content == "Review calculus II."
 
@@ -58,28 +58,28 @@ def test_create_invalid_routine(client, body, code):
     assert client.post("/routines", json=body).status_code == code
 
 
-def test_edit_routine_keeps_body_and_fields(client, vault):
+def test_edit_routine_keeps_body_and_fields(client, memory):
     r = client.patch("/routines/compile-raw", json={"active": False, "cron": "0 22 * * *"}).json()
     assert r["active"] is False and r["schedule"] == "every day at 22:00"
-    post = frontmatter.load(vault / "life/routines/compile-raw.md")
+    post = frontmatter.load(memory / "life/routines/compile-raw.md")
     assert post["skill"] == "compile-raw" and post.content == "Organizes raw/ every night."
 
 
-def test_remove_routine(client, vault):
+def test_remove_routine(client, memory):
     assert client.delete("/routines/paused").status_code == 204
-    assert not (vault / "life/routines/paused.md").exists()
+    assert not (memory / "life/routines/paused.md").exists()
     assert client.delete("/routines/paused").status_code == 404
     assert client.delete("/routines/..%2Fsecret").status_code == 404
 
 
 # ---------- routines: running ----------
 
-def test_run_now_tier3_writes_a_routine_receipt(client, vault):
+def test_run_now_tier3_writes_a_routine_receipt(client, memory):
     r = client.post("/routines/compile-raw/run").json()
     assert r["tier"] == 3
     s = wait_for_session(client, r["session_id"])
     assert s["status"] == "ok" and s["routine"] == "compile-raw" and s["skill"] == "compile-raw"
-    [rec] = receipts(vault)
+    [rec] = receipts(memory)
     assert rec["source"] == "routine" and rec["routine"] == "compile-raw" and rec["status"] == "ok"
     hist = next(x for x in client.get("/routines").json() if x["slug"] == "compile-raw")["history"]
     assert hist[0]["status"] == "ok"
@@ -89,7 +89,7 @@ def _commit_routine(client, cron: str = "0 9 * * *"):
     assert client.post("/routines", json={"name": "Commit", "cron": cron, "tier": 1, "action": "git-commit"}).status_code == 201
 
 
-def test_tier1_routine_without_git_records_an_error_and_shows_in_today(client, vault):
+def test_tier1_routine_without_git_records_an_error_and_shows_in_today(client, memory):
     _commit_routine(client)
     r = client.post("/routines/commit/run").json()
     assert r["status"] == "error" and "git" in r["response"]
@@ -97,13 +97,13 @@ def test_tier1_routine_without_git_records_an_error_and_shows_in_today(client, v
     assert item["time"] == "09:00" and item["status"] == "error"  # ran at 09:15, counts for 09:00
 
 
-def test_git_commit_routine_ok(client, vault):
+def test_git_commit_routine_ok(client, memory):
     for args in (["init", "-q"], ["config", "user.email", "t@t"], ["config", "user.name", "T"]):
-        subprocess.run(["git", *args], cwd=vault, check=True)
+        subprocess.run(["git", *args], cwd=memory, check=True)
     _commit_routine(client)
     r = client.post("/routines/commit/run").json()
     assert r["status"] == "ok" and "Committed" in r["response"]
-    log = subprocess.run(["git", "log", "--oneline"], cwd=vault, capture_output=True, text=True, encoding="utf-8").stdout
+    log = subprocess.run(["git", "log", "--oneline"], cwd=memory, capture_output=True, text=True, encoding="utf-8").stdout
     assert "Daily commit 2026-10-03 09:15" in log
     # Second time: nothing new besides the receipt just written (which goes into the next commit).
     assert client.post("/routines/commit/run").json()["status"] == "ok"
@@ -117,14 +117,14 @@ def test_status_pending_and_missed(client):
 
 # ---------- scheduler ----------
 
-def test_scheduler_registers_active_ones_and_reloads_when_the_folder_changes(vault):
-    s = scheduler.Scheduler(vault, TZ)
+def test_scheduler_registers_active_ones_and_reloads_when_the_folder_changes(memory):
+    s = scheduler.Scheduler(memory, TZ)
     s.start()
     try:
         routines = {j.id for j in s._scheduler.get_jobs() if not j.id.startswith("_")}
         assert routines == {"compile-raw", "morning-summary"}
         assert s._scheduler.get_job("_clean_ephemeral") is not None
-        (vault / "life/routines/new.md").write_text(
+        (memory / "life/routines/new.md").write_text(
             '---\ntype: routine\nname: New\ncron: "0 12 * * *"\nactive: true\ntier: 3\n---\nTest.\n', encoding="utf-8"
         )
         end = time.monotonic() + 8
@@ -140,13 +140,13 @@ def test_scheduler_registers_active_ones_and_reloads_when_the_folder_changes(vau
 
 # ---------- skills ----------
 
-def test_skills_list_run_and_last_run(client, vault):
+def test_skills_list_run_and_last_run(client, memory):
     skill = next(x for x in client.get("/skills").json() if x["name"] == "daily-summary")
     assert skill["last_run"] is None
     s = client.post("/skills/daily-summary/run", json={"instruction": "focus on studies"}).json()
     assert s["skill"] == "daily-summary"
     assert wait_for_session(client, s["id"])["status"] == "ok"
-    [rec] = receipts(vault)
+    [rec] = receipts(memory)
     assert rec["intent"] == "skill:daily-summary" and rec["tier"] == 3
     skill = next(x for x in client.get("/skills").json() if x["name"] == "daily-summary")
     assert skill["last_run"]["status"] == "ok"

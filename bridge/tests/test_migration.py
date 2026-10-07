@@ -1,4 +1,4 @@
-"""Migration of a vault (and bridge/data, .env) from the old Portuguese layout."""
+"""Migration of a memory (and bridge/data, .env) from the old Portuguese layout."""
 
 import json
 from datetime import date
@@ -9,10 +9,10 @@ import frontmatter
 from app import studies
 from app.migrations import english_layout as mig
 from app.receipts_index import read_receipts
-from app.setup_vault import copy_template
-from app.vault import reader
+from app.setup_memory import copy_template
+from app.memory import reader
 
-OLD_VAULT = {
+OLD_MEMORY = {
     "vida/tarefas.md": "# Tarefas\n\n- [ ] Pagar boleto 📅 2026-10-05 ⏫ #pessoal\n",
     "vida/lembretes.md": "# Lembretes\n\n- [ ] Tomar remédio 🔁 0 22 * * * 🆔 a8d7f1\n",
     "vida/agenda/2026-10-03.md": "---\ntipo: agenda\ndata: 2026-10-03\nfonte: google-calendar\n---\n- 14:00 Dentista\n",
@@ -48,63 +48,63 @@ OLD_VAULT = {
 }
 
 
-def _old_vault(tmp_path: Path) -> Path:
-    vault = tmp_path / "old-vault"
-    for rel, content in OLD_VAULT.items():
-        path = vault / rel
+def _old_memory(tmp_path: Path) -> Path:
+    memory = tmp_path / "old-memory"
+    for rel, content in OLD_MEMORY.items():
+        path = memory / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
-    return vault
+    return memory
 
 
 def test_dry_run_changes_nothing(tmp_path):
-    vault = _old_vault(tmp_path)
+    memory = _old_memory(tmp_path)
     plan = mig.Plan(apply=False)
-    mig.migrate_vault(vault, plan)
+    mig.migrate_memory(memory, plan)
     assert any(s.startswith("vida/tarefas.md → life/tasks.md") for s in plan.steps)
-    assert (vault / "vida/tarefas.md").exists() and not (vault / "life").exists()
+    assert (memory / "vida/tarefas.md").exists() and not (memory / "life").exists()
 
 
-def test_migrated_vault_is_read_by_the_bridge(tmp_path, now):
-    vault = _old_vault(tmp_path)
-    mig.migrate_vault(vault, mig.Plan(apply=True))
+def test_migrated_memory_is_read_by_the_bridge(tmp_path, now):
+    memory = _old_memory(tmp_path)
+    mig.migrate_memory(memory, mig.Plan(apply=True))
 
-    assert not (vault / "vida").exists() and not (vault / "recibos").exists()
-    assert [x.text for x in reader.read_tasks(vault)] == ["Pagar boleto"]
-    assert [e.title for e in reader.read_agenda(vault, date(2026, 10, 3))] == ["Dentista"]
-    assert (vault / "life/reminders.md").exists() and (vault / "raw/_processed.md").exists()
-    assert (vault / "wiki/about-me/profile.md").exists()
+    assert not (memory / "vida").exists() and not (memory / "recibos").exists()
+    assert [x.text for x in reader.read_tasks(memory)] == ["Pagar boleto"]
+    assert [e.title for e in reader.read_agenda(memory, date(2026, 10, 3))] == ["Dentista"]
+    assert (memory / "life/reminders.md").exists() and (memory / "raw/_processed.md").exists()
+    assert (memory / "wiki/about-me/profile.md").exists()
 
-    routines = {r.slug: r for r in reader.read_routines(vault)}
+    routines = {r.slug: r for r in reader.read_routines(memory)}
     assert set(routines) == {"morning-notice", "email-summary"}
     assert routines["morning-notice"].action == "daily-notice" and routines["morning-notice"].name == "Aviso da manhã"
     assert routines["email-summary"].skill == "email-summary" and routines["email-summary"].output == "ephemeral"
     assert "life/agenda" in routines["email-summary"].description
 
-    [receipt] = read_receipts(vault, date(2026, 10, 1), date(2026, 10, 31))
+    [receipt] = read_receipts(memory, date(2026, 10, 1), date(2026, 10, 31))
     assert receipt["source"] == "routine" and receipt["routine"] == "morning-notice" and receipt["status"] == "error"
     assert receipt["intent"] == "action:daily-notice" and receipt["request"] == "Rotina: Aviso da manhã"
 
-    [subject] = studies.list_subjects(vault)
+    [subject] = studies.list_subjects(memory)
     assert subject["topic_count"] == 1 and subject["annotation_count"] == 1
-    [annotation] = studies.list_annotations(vault, "calc")
+    [annotation] = studies.list_annotations(memory, "calc")
     assert annotation["topic"] == "wiki/studies/calc/limites.md"
-    assert "[[wiki/studies/calc/limites]]" in (vault / "wiki/studies/calc/_index.md").read_text(encoding="utf-8")
-    assert frontmatter.load(vault / "raw/2026-10-05-x.md")["source"] == "voice"
+    assert "[[wiki/studies/calc/limites]]" in (memory / "wiki/studies/calc/_index.md").read_text(encoding="utf-8")
+    assert frontmatter.load(memory / "raw/2026-10-05-x.md")["source"] == "voice"
 
 
 def test_skills_pristine_copies_get_the_new_template_and_edited_ones_are_rewritten(tmp_path):
-    vault = _old_vault(tmp_path)
-    mig.migrate_vault(vault, mig.Plan(apply=True))
-    edited = (vault / ".claude/skills/schedule-event/SKILL.md").read_text(encoding="utf-8")
+    memory = _old_memory(tmp_path)
+    mig.migrate_memory(memory, mig.Plan(apply=True))
+    edited = (memory / ".claude/skills/schedule-event/SKILL.md").read_text(encoding="utf-8")
     assert "name: schedule-event" in edited and "Use life/agenda/." in edited
-    email = (vault / ".claude/skills/email-summary/SKILL.md").read_text(encoding="utf-8")
+    email = (memory / ".claude/skills/email-summary/SKILL.md").read_text(encoding="utf-8")
     assert "output: ephemeral" in email and "title: Resumo de e-mails" in email and "# comentário" in email
-    assert not (vault / ".claude/skills/agendar").exists()
+    assert not (memory / ".claude/skills/agendar").exists()
 
 
 def test_rewrite_is_idempotent():
-    text = OLD_VAULT["recibos/2026/10/2026-10-04-135751-rotina-aviso.md"]
+    text = OLD_MEMORY["recibos/2026/10/2026-10-04-135751-rotina-aviso.md"]
     once = mig.rewrite_note(text)
     assert mig.rewrite_note(once) == once
     assert "## Request\n" in once and "type: receipt" in once
@@ -135,32 +135,32 @@ def test_bridge_data_and_env(tmp_path):
 
 
 def test_links_into_subject_folders_are_rewritten(tmp_path):
-    vault = _old_vault(tmp_path)
-    mig.migrate_vault(vault, mig.Plan(apply=True))
-    assert (vault / "wiki/studies/calc/_sources/livro.pdf").exists()
-    topic = frontmatter.load(vault / "wiki/studies/calc/limites.md")
+    memory = _old_memory(tmp_path)
+    mig.migrate_memory(memory, mig.Plan(apply=True))
+    assert (memory / "wiki/studies/calc/_sources/livro.pdf").exists()
+    topic = frontmatter.load(memory / "wiki/studies/calc/limites.md")
     assert topic["sources"] == ["wiki/studies/calc/_sources/livro.pdf"]
     assert mig.rewrite_paths("wiki/estudos/calc/_anotacoes/a.md") == "wiki/studies/calc/_annotations/a.md"
 
 
-def test_vault_started_with_the_new_template_before_migrating(tmp_path):
-    vault = _old_vault(tmp_path)
-    copy_template(mig.TEMPLATE, vault)  # what the start scripts do
-    (vault / "life/reminders.md").write_text("# Reminders\n\n- [ ] Already edited\n", encoding="utf-8")
+def test_memory_started_with_the_new_template_before_migrating(tmp_path):
+    memory = _old_memory(tmp_path)
+    copy_template(mig.TEMPLATE, memory)  # what the start scripts do
+    (memory / "life/reminders.md").write_text("# Reminders\n\n- [ ] Already edited\n", encoding="utf-8")
 
     dry = mig.Plan(apply=False)
-    mig.migrate_vault(vault, dry)
+    mig.migrate_memory(memory, dry)
     assert dry.warnings == ["life/reminders.md already exists: vida/lembretes.md was not moved onto it "
                             "(it keeps its old name); merge them by hand"]
 
     plan = mig.Plan(apply=True)
-    mig.migrate_vault(vault, plan)
+    mig.migrate_memory(memory, plan)
     assert plan.warnings == dry.warnings
     # untouched template copies were replaced by the user's files
-    assert [x.text for x in reader.read_tasks(vault)] == ["Pagar boleto"]
-    assert frontmatter.load(vault / "life/routines/morning-notice.md")["name"] == "Aviso da manhã"
-    assert "Use life/agenda/." in (vault / ".claude/skills/schedule-event/SKILL.md").read_text(encoding="utf-8")
-    assert not (vault / ".claude/skills/agendar").exists()
+    assert [x.text for x in reader.read_tasks(memory)] == ["Pagar boleto"]
+    assert frontmatter.load(memory / "life/routines/morning-notice.md")["name"] == "Aviso da manhã"
+    assert "Use life/agenda/." in (memory / ".claude/skills/schedule-event/SKILL.md").read_text(encoding="utf-8")
+    assert not (memory / ".claude/skills/agendar").exists()
     # the real conflict keeps both files
-    assert "Already edited" in (vault / "life/reminders.md").read_text(encoding="utf-8")
-    assert "Tomar remédio" in (vault / "life/lembretes.md").read_text(encoding="utf-8")
+    assert "Already edited" in (memory / "life/reminders.md").read_text(encoding="utf-8")
+    assert "Tomar remédio" in (memory / "life/lembretes.md").read_text(encoding="utf-8")

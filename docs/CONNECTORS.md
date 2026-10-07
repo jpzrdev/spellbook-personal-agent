@@ -1,6 +1,6 @@
 # Connectors (MCP): Google Calendar and Gmail
 
-Gandalf uses the connectors through **Tier 3's Claude Code**, running inside the vault. The Bridge never talks to Google directly.
+Gandalf uses the connectors through **Tier 3's Claude Code**, running inside the memory. The Bridge never talks to Google directly.
 
 ## Step 0: log in to Claude Code (required)
 
@@ -20,14 +20,14 @@ Sign in with your Claude subscription account. Without it, tiers 2 and 3 don't w
 
 ## Option B: your own MCP server
 
-If option A doesn't work, you can add a Google MCP server just for the vault:
+If option A doesn't work, you can add a Google MCP server just for the memory:
 
 ```
-cd vault
+cd memory
 claude mcp add --scope project <name> -- <server command>
 ```
 
-This creates `vault/.mcp.json`, which the Bridge passes explicitly to Claude Code (`--mcp-config`). Google servers usually require creating OAuth credentials in the Google Cloud Console; the steps depend on the server you choose.
+This creates `memory/.mcp.json`, which the Bridge passes explicitly to Claude Code (`--mcp-config`). Google servers usually require creating OAuth credentials in the Google Cloud Console; the steps depend on the server you choose.
 
 ## How permissions work
 
@@ -40,5 +40,5 @@ allowed-tools: mcp__<calendar-server>
 ---
 ```
 
-- `email-summary` runs with **ephemeral output**: read-only, without writing to the vault; the result shows up in "Today's summaries" for 48 h.
-- `sync-calendar` writes to `life/agenda/` (regular output in the vault).
+- `email-summary` runs with **ephemeral output**: read-only, without writing to the memory; the result shows up in "Today's summaries" for 48 h.
+- `sync-calendar` writes to `life/agenda/` (regular output in the memory).

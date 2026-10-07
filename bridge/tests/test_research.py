@@ -1,4 +1,4 @@
-"""Web research (web only, no vault) → ephemeral result → saved, organized, in the Library."""
+"""Web research (web only, no memory) → ephemeral result → saved, organized, in the Library."""
 
 import time
 
@@ -16,10 +16,10 @@ def _wait_for_receipt(client, session_id):
     return s
 
 
-def test_tools_of_each_mode_are_pinned_to_the_vault(vault):
-    """Security regression (tested with the real CLI): without `(**)` Claude Code read/wrote outside the vault,
+def test_tools_of_each_mode_are_pinned_to_the_memory(memory):
+    """Security regression (tested with the real CLI): without `(**)` Claude Code read/wrote outside the memory,
     and with acceptEdits the "read-only" sessions could write."""
-    m = tier3.manager(vault)
+    m = tier3.manager(memory)
 
     def tools(output, skill=None):
         s = tier3.Session(id="x", task="t", request="p", source="hud", created=None, output=output, skill=skill)
@@ -27,17 +27,17 @@ def test_tools_of_each_mode_are_pinned_to_the_vault(vault):
         assert args[args.index("--permission-mode") + 1] == "default"
         return args[args.index("--allowedTools") + 1]
 
-    assert tools("vault").startswith("Read(**),Write(**),Edit(**)")
+    assert tools("memory").startswith("Read(**),Write(**),Edit(**)")
     assert tools("ephemeral") == "Read(**),Glob(**),Grep(**)"
-    assert tools("research") == "WebSearch,WebFetch"  # not even reading the vault
+    assert tools("research") == "WebSearch,WebFetch"  # not even reading the memory
     lib = tools("library")
     assert "Write(wiki/library/**)" in lib and "Write(**)" not in lib and "Web" not in lib
 
 
-def test_a_current_question_becomes_research_and_is_saved_in_the_library(client, vault):
+def test_a_current_question_becomes_research_and_is_saved_in_the_library(client, memory):
     r = client.post("/ask", json={"text": "RESEARCH: I want to move to Canada"}).json()
     assert r["tier"] == 3 and r["intent"] == "research" and "Moving to Canada" in r["reply"]
-    s = tier3.manager(vault).get(r["session_id"])
+    s = tier3.manager(memory).get(r["session_id"])
     assert s.output == "research" and s.skill == "research"
     end = _wait_for_receipt(client, r["session_id"])
     assert end["status"] == "ok" and end["ephemeral_id"]
@@ -45,7 +45,7 @@ def test_a_current_question_becomes_research_and_is_saved_in_the_library(client,
     e = client.get(f"/ephemeral/{end['ephemeral_id']}").json()
     assert e["title"] == "Research: Moving to Canada" and e["research"]["topic"] == "Moving to Canada"
     assert e["expires"] > "2026-10-09"  # research waits 7 days
-    receipts = (vault / "receipts").rglob("*.md")
+    receipts = (memory / "receipts").rglob("*.md")
     assert all(e["text"] not in r.read_text(encoding="utf-8") for r in receipts)
 
     g = client.post(f"/research/{e['id']}/save")
@@ -57,13 +57,13 @@ def test_a_current_question_becomes_research_and_is_saved_in_the_library(client,
     assert client.get(f"/ephemeral/{e['id']}").status_code == 404  # saved: left "Summaries"
 
 
-def test_research_skill_from_the_skills_tab_still_has_no_vault(client, vault):
+def test_research_skill_from_the_skills_tab_still_has_no_memory(client, memory):
     s = client.post("/skills/research/run", json={"instruction": "flights to Tokyo"}).json()
     assert s["output"] == "research"
 
 
-def test_library_list_detail_and_checklist(client, vault):
-    folder = vault / "wiki/library/japan-trip"
+def test_library_list_detail_and_checklist(client, memory):
+    folder = memory / "wiki/library/japan-trip"
     folder.mkdir(parents=True)
     (folder / "_index.md").write_text(
         "---\ntype: plan\nupdated: 2026-10-02\n---\n# Trip to Japan\n\nTen days between Tokyo and Kyoto in April.\n", encoding="utf-8")
@@ -80,6 +80,6 @@ def test_library_list_detail_and_checklist(client, vault):
     assert client.post("/library/japan-trip/tasks").json()["created"] == []  # no duplicates
     assert client.get("/library/../life").status_code == 404
 
-    # update: the research gets what is already saved, but still has no vault
+    # update: the research gets what is already saved, but still has no memory
     s = client.post("/research", json={"request": "add a day in Nara", "update": "japan-trip"}).json()
     assert "<already_saved>" in s["task"] and "Ten days" in s["task"] and s["output"] == "research"

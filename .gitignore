@@ -1,5 +1,7 @@
 .env
-# The user's vault (personal data) lives outside git; vault-template/ is the versioned skeleton.
+# The user's memory (personal data) lives outside git; memory-template/ is the versioned skeleton.
+/memory/
+# Before the rename the folder was vault/ (app.migrations.memory_rename moves it)
 /vault/
 
 # Python

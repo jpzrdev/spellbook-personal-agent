@@ -1,6 +1,6 @@
-"""Copies vault-template/ to VAULT_PATH without overwriting anything that exists.
+"""Copies memory-template/ to MEMORY_PATH without overwriting anything that exists.
 
-Usage: uv run python -m app.setup_vault
+Usage: uv run python -m app.setup_memory
 """
 
 import shutil
@@ -8,7 +8,7 @@ from pathlib import Path
 
 from app.config import REPO_ROOT, get_settings
 
-TEMPLATE = REPO_ROOT / "vault-template"
+TEMPLATE = REPO_ROOT / "memory-template"
 
 
 def copy_template(template: Path, target: Path) -> tuple[list[Path], list[Path]]:
@@ -30,9 +30,9 @@ def copy_template(template: Path, target: Path) -> tuple[list[Path], list[Path]]
 
 
 def main() -> None:
-    target = get_settings().vault_path
+    target = get_settings().memory_path
     created, skipped = copy_template(TEMPLATE, target)
-    print(f"Vault: {target}")
+    print(f"Memory: {target}")
     print(f"  {len(created)} file(s) created, {len(skipped)} existing file(s) kept.")
     for rel in created:
         print(f"  + {rel}")

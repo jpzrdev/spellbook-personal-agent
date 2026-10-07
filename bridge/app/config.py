@@ -10,14 +10,14 @@ from dotenv import load_dotenv
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # Languages the assistant can speak. The code and the HUD are always in English; this only changes
-# how Gandalf talks to the user and the language of the notes it writes in the vault.
+# how Gandalf talks to the user and the language of the notes it writes in the memory.
 LANGUAGES = ("en", "pt-BR")
 
 
 @dataclass(frozen=True)
 class Settings:
-    vault_path: Path
-    # Skills (skills/<name>/SKILL.md): part of the project, not the vault. Gandalf can create and edit them.
+    memory_path: Path
+    # Skills (skills/<name>/SKILL.md): part of the project, not the memory. Gandalf can create and edit them.
     skills_path: Path
     host: str
     port: int
@@ -31,7 +31,7 @@ class Settings:
     tier3_timeout_min: float
     tier3_max_concurrent: int
     daily_call_limit: int
-    # Ephemeral outputs: outside the vault and git
+    # Ephemeral outputs: outside the memory and git
     data_path: Path
     ephemeral_hours: float
     # Voice (offline)
@@ -65,15 +65,25 @@ def _language(value: str) -> str:
 DEFAULT_VOICE = {"pt-BR": "pm_santa:0.5+bm_lewis:0.5", "en": "bm_lewis"}
 
 
+def _memory_path() -> Path:
+    """MEMORY_PATH, or the old VAULT_PATH; by default memory/ (or vault/, from before the rename, while it's there).
+    `python -m app.migrations.memory_rename` moves an old vault/ and the .env key to the new names."""
+    configured = os.getenv("MEMORY_PATH") or os.getenv("VAULT_PATH")
+    if configured:
+        return Path(configured)
+    old = REPO_ROOT / "vault"
+    return old if old.is_dir() and not (REPO_ROOT / "memory").exists() else REPO_ROOT / "memory"
+
+
 @lru_cache
 def get_settings() -> Settings:
     load_dotenv(REPO_ROOT / ".env")
-    vault = Path(os.getenv("VAULT_PATH") or REPO_ROOT / "vault")
-    if not vault.is_absolute():
-        vault = (REPO_ROOT / vault).resolve()
+    memory = _memory_path()
+    if not memory.is_absolute():
+        memory = (REPO_ROOT / memory).resolve()
     language = _language(_env("LANGUAGE") or "en")
     return Settings(
-        vault_path=vault,
+        memory_path=memory,
         skills_path=Path(_env("SKILLS_DIR") or REPO_ROOT / "skills"),
         host=os.getenv("BRIDGE_HOST", "127.0.0.1"),
         port=int(os.getenv("BRIDGE_PORT") or 8787),

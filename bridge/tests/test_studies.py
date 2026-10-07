@@ -21,16 +21,16 @@ The derivative measures the instantaneous **rate of change** of a function: how 
 """
 
 
-def _prepare(vault):
-    (vault / NOTE).write_text(CONTENT, encoding="utf-8")
+def _prepare(memory):
+    (memory / NOTE).write_text(CONTENT, encoding="utf-8")
 
 
-def _receipts(vault):
-    return [frontmatter.load(p) for p in (vault / "receipts").rglob("*.md")]
+def _receipts(memory):
+    return [frontmatter.load(p) for p in (memory / "receipts").rglob("*.md")]
 
 
-def test_detail_is_the_collection_without_progress(client, vault):
-    _prepare(vault)
+def test_detail_is_the_collection_without_progress(client, memory):
+    _prepare(memory)
     d = client.get("/studies/calculus").json()
     assert d["title"] == "Calculus II" and d["topic_count"] == 2
     x = d["topics"][0]  # order: 1 comes first
@@ -42,8 +42,8 @@ def test_detail_is_the_collection_without_progress(client, vault):
     assert m["subject"] == "calculus" and m["titles"] == ["Derivatives", "Limits"]
 
 
-def test_topic_quiz_multiple_choice(client, vault):
-    _prepare(vault)
+def test_topic_quiz_multiple_choice(client, memory):
+    _prepare(memory)
     client.post("/studies/calculus/annotations", json={"text": "The chain rule is the one that shows up the most", "topic": NOTE})
     r = client.post("/studies/calculus/quiz", json={"count": 3, "type": "multiple", "topic": NOTE})
     assert r.status_code == 200
@@ -52,14 +52,14 @@ def test_topic_quiz_multiple_choice(client, vault):
     p = q["questions"][1]
     assert p["options"] == ["A", "B", "C", "D"] and p["correct"] == 1 and p["topic"] == NOTE
     assert p["topic_title"] == "Derivatives"
-    # nothing from the quiz goes to the vault, only the receipt with the cost
-    [rec] = _receipts(vault)
+    # nothing from the quiz goes to the memory, only the receipt with the cost
+    [rec] = _receipts(memory)
     assert rec["intent"] == "studies.quiz" and "Question 1" not in rec.content
-    assert not any("Question 1" in a.read_text(encoding="utf-8") for a in vault.rglob("*.md"))
+    assert not any("Question 1" in a.read_text(encoding="utf-8") for a in memory.rglob("*.md"))
 
 
-def test_general_free_text_quiz_and_grading(client, vault):
-    _prepare(vault)
+def test_general_free_text_quiz_and_grading(client, memory):
+    _prepare(memory)
     q = client.post("/studies/calculus/quiz", json={"count": 2, "type": "text"}).json()
     assert q["topic"] is None and all(p["options"] is None for p in q["questions"])
     assert q["questions"][0]["topic"].startswith("wiki/studies/calculus/")
@@ -69,7 +69,7 @@ def test_general_free_text_quiz_and_grading(client, vault):
     assert client.post("/studies/calculus/quiz/grade", json={**base, "answer": "no idea"}).json()["verdict"] == "wrong"
 
 
-def test_quiz_limits_and_paths(client, vault):
+def test_quiz_limits_and_paths(client, memory):
     assert client.post("/studies/calculus/quiz", json={"count": 99, "type": "text"}).status_code == 422
     assert client.post("/studies/calculus/quiz", json={"count": 3, "type": "other"}).status_code == 422
     assert client.post("/studies/calculus/quiz", json={"topic": "life/tasks.md"}).status_code == 400
@@ -78,16 +78,16 @@ def test_quiz_limits_and_paths(client, vault):
     assert client.get("/studies/does-not-exist").status_code == 404
 
 
-def test_save_a_quiz_question_as_an_annotation(client, vault):
-    _prepare(vault)
+def test_save_a_quiz_question_as_an_annotation(client, memory):
+    _prepare(memory)
     a = client.post("/studies/calculus/annotations", json={
         "title": "Quiz: What is the derivative?", "text": "**Question:** ...", "topic": NOTE, "source": "quiz"}).json()
     assert a["source"] == "quiz" and a["topic"] == NOTE
-    assert frontmatter.load(vault / a["file"])["source"] == "quiz"
+    assert frontmatter.load(memory / a["file"])["source"] == "quiz"
 
 
-def test_deepen_topic_uses_the_skill(client, vault):
-    _prepare(vault)
+def test_deepen_topic_uses_the_skill(client, memory):
+    _prepare(memory)
     s = client.post("/studies/generate", json={"kind": "deepen", "note": NOTE}).json()
     assert NOTE in s["task"] and s["task"].startswith("Deepen")
     assert client.post("/studies/generate", json={"kind": "deepen", "note": "life/tasks.md"}).status_code == 400
@@ -98,16 +98,16 @@ def test_short_summary_skips_headings_and_lists():
     assert studies._short_summary("## T\n\n- item\n\n> callout\n\nText **bold** with [[a/b|link]].") == "Text bold with link."
 
 
-def test_question_about_a_note_goes_to_tier2_with_context(client, vault, monkeypatch):
+def test_question_about_a_note_goes_to_tier2_with_context(client, memory, monkeypatch):
     from app.gandalf import tier2
 
-    _prepare(vault)
+    _prepare(memory)
     seen = {}
     original = tier2.decide
 
-    def spy(vault_, request, now, previous=None, note=None):
+    def spy(memory_, request, now, previous=None, note=None):
         seen["note"] = note
-        return original(vault_, request, now, previous, note)
+        return original(memory_, request, now, previous, note)
 
     monkeypatch.setattr(tier2, "decide", spy)
     r = client.post("/ask", json={"text": "my tasks", "note": NOTE}).json()
@@ -122,8 +122,8 @@ def test_pomodoro_without_scheduler_does_not_break(client):
     assert client.post("/pomodoro", json={"end": "2026-10-03T09:00:00", "title": "x"}).status_code == 422
 
 
-def test_topic_and_general_annotations(client, vault):
-    _prepare(vault)
+def test_topic_and_general_annotations(client, memory):
+    _prepare(memory)
     a = client.post("/studies/calculus/annotations", json={"text": "Remember the chain rule", "topic": NOTE}).json()
     g = client.post("/studies/calculus/annotations", json={"text": "The exam is on the 20th", "title": "Exam"}).json()
     assert a["topic"] == NOTE and g["topic"] is None and g["title"] == "Exam"
@@ -140,10 +140,10 @@ def test_topic_and_general_annotations(client, vault):
     assert client.post("/studies/calculus/annotations", json={"text": "x", "topic": "life/tasks.md"}).status_code == 400
 
 
-def test_annotations_go_into_the_question_context(client, vault, monkeypatch):
+def test_annotations_go_into_the_question_context(client, memory, monkeypatch):
     from app.gandalf import tier2
 
-    _prepare(vault)
+    _prepare(memory)
     client.post("/studies/calculus/annotations", json={"text": "My question: what about the product rule?", "topic": NOTE})
     seen = {}
     original = tier2.decide
@@ -152,13 +152,13 @@ def test_annotations_go_into_the_question_context(client, vault, monkeypatch):
     assert "product rule" in seen["note"][1]
 
 
-def test_send_material_stores_and_structures(client, vault):
+def test_send_material_stores_and_structures(client, memory):
     import io
     import zipfile
 
     from test_tier2_tier3 import wait_for_end
 
-    _prepare(vault)
+    _prepare(memory)
     docx = io.BytesIO()
     with zipfile.ZipFile(docx, "w") as z:
         z.writestr("word/document.xml", '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>'
@@ -172,7 +172,7 @@ def test_send_material_stores_and_structures(client, vault):
     sources = r.json()["sources"]
     assert len(sources) == 3 and all(f.startswith("wiki/studies/calculus/_sources/") for f in sources)
     md = next(f for f in sources if f.endswith("lecture.md"))
-    assert "is the sum of the derivatives" in (vault / md).read_text(encoding="utf-8")
+    assert "is the sum of the derivatives" in (memory / md).read_text(encoding="utf-8")
     session = r.json()["session"]
     assert "_sources/" in session["task"] and NOTE in session["task"]
     wait_for_end(client, session["id"])
@@ -183,9 +183,9 @@ def test_send_material_stores_and_structures(client, vault):
     assert client.post("/studies/calculus/material", data={}).status_code == 422
 
 
-def test_remove_subject_deletes_everything_and_leaves_the_index(client, vault):
-    _prepare(vault)
-    index = vault / "wiki/studies/_index.md"
+def test_remove_subject_deletes_everything_and_leaves_the_index(client, memory):
+    _prepare(memory)
+    index = memory / "wiki/studies/_index.md"
     index.write_text("# Studies\n\n- [[wiki/studies/calculus/_index|Calculus II]]: derivatives.\n- [[wiki/studies/calculus-3]]: another.\n", encoding="utf-8")
     client.post("/studies/calculus/annotations", json={"text": "my note", "topic": NOTE})
     client.post("/studies/calculus/material", data={"text": "lecture 1", "structure": "false"})
@@ -193,7 +193,7 @@ def test_remove_subject_deletes_everything_and_leaves_the_index(client, vault):
     assert r.status_code == 200
     d = r.json()
     assert (d["title"], d["topics"], d["annotations"], d["sources"]) == ("Calculus II", 2, 1, 1)
-    assert not (vault / "wiki/studies/calculus").exists()
+    assert not (memory / "wiki/studies/calculus").exists()
     text = index.read_text(encoding="utf-8")
     assert "calculus/_index" not in text and "calculus-3" in text  # only the deleted subject's line
     assert client.get("/studies").json() == []

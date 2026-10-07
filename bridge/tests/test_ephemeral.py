@@ -27,9 +27,9 @@ def _ephemeral_routine(client):
     assert r.status_code == 201 and r.json()["output"] == "ephemeral"
 
 
-def test_ephemeral_routine_does_not_store_content_in_the_vault(client, vault):
+def test_ephemeral_routine_does_not_store_content_in_the_memory(client, memory):
     _ephemeral_routine(client)
-    assert "output: ephemeral" in (vault / "life/routines/email-summary.md").read_text(encoding="utf-8")
+    assert "output: ephemeral" in (memory / "life/routines/email-summary.md").read_text(encoding="utf-8")
 
     sid = client.post("/routines/email-summary/run").json()["session_id"]
     s = wait_for_session(client, sid)
@@ -38,29 +38,29 @@ def test_ephemeral_routine_does_not_store_content_in_the_vault(client, vault):
     # The content goes to ephemeral storage, which shows up in the HUD...
     [item] = client.get("/ephemeral").json()
     assert item["text"] == "Done: I wrote output/test-report.md." and item["routine"] == "email-summary"
-    # ...and the receipt in the vault keeps only metadata.
-    [rec] = [frontmatter.load(p) for p in (vault / "receipts").rglob("*.md")]
+    # ...and the receipt in the memory keeps only metadata.
+    [rec] = [frontmatter.load(p) for p in (memory / "receipts").rglob("*.md")]
     assert rec["routine"] == "email-summary" and rec["status"] == "ok"
     assert "Done: I wrote" not in rec.content and "ephemeral output" in rec.content
 
 
-def test_ephemeral_session_runs_read_only_plus_the_skill_tools(vault):
-    m = tier3.Manager(vault)
+def test_ephemeral_session_runs_read_only_plus_the_skill_tools(memory):
+    m = tier3.Manager(memory)
     s = tier3.Session(id="x", task="t", request="p", source="routine", created=None, skill="email-summary", output="ephemeral")
     args = m._args(s)
     assert args[args.index("--allowedTools") + 1] == "Read(**),Glob(**),Grep(**),mcp__gmail,Read(**)"
     assert m._prompt(s).startswith("/gandalf:email-summary t") and "ephemeral" in m._prompt(s)
 
-    assert "--add-dir" not in args  # only sessions that write to the vault can edit skills
+    assert "--add-dir" not in args  # only sessions that write to the memory can edit skills
 
     normal = tier3.Session(id="y", task="t", request="p", source="hud", created=None)
     assert "Write" in m._args(normal)[m._args(normal).index("--allowedTools") + 1]
 
 
-def test_tier3_loads_the_skills_as_a_plugin_and_can_edit_them(vault, tmp_path):
+def test_tier3_loads_the_skills_as_a_plugin_and_can_edit_them(memory, tmp_path):
     skills = tmp_path / "skills"
     (skills / ".gitignore").write_text("/*/\n", encoding="utf-8")
-    m = tier3.Manager(vault)
+    m = tier3.Manager(memory)
     args = m._args(tier3.Session(id="x", task="t", request="p", source="hud", created=None))
     plugin = Path(args[args.index("--plugin-dir") + 1])
     manifest = json.loads((plugin / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
@@ -82,29 +82,29 @@ def test_tier3_loads_the_skills_as_a_plugin_and_can_edit_them(vault, tmp_path):
     assert new != plugin and plugin.is_dir() and (new / "skills" / "new-one" / "SKILL.md").is_file()
 
 
-def test_tier3_gets_the_language_instruction(vault, pt_br):
-    args = tier3.Manager(vault)._args(tier3.Session(id="x", task="t", request="p", source="hud", created=None))
+def test_tier3_gets_the_language_instruction(memory, pt_br):
+    args = tier3.Manager(memory)._args(tier3.Session(id="x", task="t", request="p", source="hud", created=None))
     assert "Brazilian Portuguese" in args[args.index("--append-system-prompt") + 1]
 
 
-def test_the_vault_mcp_is_loaded_explicitly(vault):
-    (vault / ".mcp.json").write_text('{"mcpServers": {}}', encoding="utf-8")
-    args = tier3.Manager(vault)._args(tier3.Session(id="x", task="t", request="p", source="hud", created=None))
-    assert args[args.index("--mcp-config") + 1] == str(vault / ".mcp.json")
+def test_the_memory_mcp_is_loaded_explicitly(memory):
+    (memory / ".mcp.json").write_text('{"mcpServers": {}}', encoding="utf-8")
+    args = tier3.Manager(memory)._args(tier3.Session(id="x", task="t", request="p", source="hud", created=None))
+    assert args[args.index("--mcp-config") + 1] == str(memory / ".mcp.json")
 
 
-def test_allowed_tools_formats(vault):
+def test_allowed_tools_formats(memory):
     assert _tools("Read, Bash(git *) mcp__gmail") == ["Read", "Bash(git *)", "mcp__gmail"]
     assert _tools(["mcp__google_calendar"]) == ["mcp__google_calendar"]
     assert get_skill("email-summary").tools == ["mcp__gmail", "Read"]
 
 
-def test_save_and_discard_ephemeral(client, vault):
+def test_save_and_discard_ephemeral(client, memory):
     e = ephemeral.save("Email summary", "- The tuition bill is due Friday\n- Meeting rescheduled", "routine")
     r = client.post(f"/ephemeral/{e.id}/save", json={"target": "task", "text": "Pay the tuition bill"})
     assert r.status_code == 201 and r.json()["task"]["text"] == "Pay the tuition bill"
     r = client.post(f"/ephemeral/{e.id}/save", json={"target": "raw"}).json()
-    assert (vault / r["file"]).read_text(encoding="utf-8").strip().endswith("- Meeting rescheduled")
+    assert (memory / r["file"]).read_text(encoding="utf-8").strip().endswith("- Meeting rescheduled")
     assert client.post(f"/ephemeral/{e.id}/save", json={"target": "task"}).status_code == 422
     assert client.delete(f"/ephemeral/{e.id}").status_code == 204
     assert client.get("/ephemeral").json() == []
@@ -129,7 +129,7 @@ def test_studies_list(client):
     assert calc["topic_count"] == 2 and calc["annotation_count"] == 0 and calc["source_count"] == 0
 
 
-def test_ephemeral_skill_run_from_the_skills_tab_does_not_go_to_the_vault(client, vault):
+def test_ephemeral_skill_run_from_the_skills_tab_does_not_go_to_the_memory(client, memory):
     """Real bug: running /email-summary from the Skills tab wrote the emails into the receipt and didn't show in Summaries."""
     from test_tier2_tier3 import wait_for_end
 
@@ -145,5 +145,5 @@ def test_ephemeral_skill_run_from_the_skills_tab_does_not_go_to_the_vault(client
         assert end["status"] == "ok" and end["ephemeral_id"]
     [item] = client.get("/ephemeral").json()
     assert item["title"] == "Email summary" and item["id"] == end["ephemeral_id"]
-    for receipt in (vault / "receipts").rglob("*.md"):
+    for receipt in (memory / "receipts").rglob("*.md"):
         assert item["text"] not in receipt.read_text(encoding="utf-8")

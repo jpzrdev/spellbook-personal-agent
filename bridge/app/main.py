@@ -1,4 +1,4 @@
-"""Bridge: FastAPI app that takes requests from every door (HUD, Obsidian, voice)."""
+"""Bridge: FastAPI app that takes requests from every door (HUD, voice, routines)."""
 
 import asyncio
 import json
@@ -6,7 +6,7 @@ import logging
 import os
 import re
 import secrets
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 import threading
 import time
 from dataclasses import asdict
@@ -20,6 +20,7 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Query,
     Response,
     UploadFile,
     WebSocket,
@@ -30,6 +31,7 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from starlette.requests import HTTPConnection
+from starlette.responses import FileResponse
 
 from app import clock, ephemeral, library, proposals, push
 from app import reminders as reminder_scheduler
@@ -47,11 +49,11 @@ from app.routines import scheduler, status as routine_status
 from app.routines.actions import ACTIONS
 from app.skills.catalog import has_skill, list_skills
 from app.speech import voice
-from app.vault import browse, reader, writer
-from app.vault import reminders as reminder_store
-from app.vault.tasks import sort_by_priority
+from app.memory import browse, clip, edit, links, reader, writer
+from app.memory import reminders as reminder_store
+from app.memory.tasks import sort_by_priority
 
-Source = Literal["hud", "obsidian", "voice", "routine"]
+Source = Literal["hud", "voice", "routine"]
 Priority = Literal["highest", "high", "medium", "low", "lowest"]
 
 
@@ -74,22 +76,22 @@ def require_token(conn: HTTPConnection) -> None:
         raise HTTPException(401, "invalid token")
 
 
-def get_vault() -> Path:
-    vault = get_settings().vault_path
-    if not vault.is_dir():
-        raise HTTPException(503, f"vault not found at {vault}")
-    return vault
+def get_memory() -> Path:
+    memory = get_settings().memory_path
+    if not memory.is_dir():
+        raise HTTPException(503, f"memory not found at {memory}")
+    return memory
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     """Starts the schedulers (routines and reminders) with the Bridge (GANDALF_SCHEDULER=0 turns them off, e.g. tests)."""
     schedulers = []
-    vault = get_settings().vault_path
+    memory = get_settings().memory_path
     if os.getenv("GANDALF_VOICE_PRELOAD", "1") != "0":
         voice.preload()
-    if os.getenv("GANDALF_SCHEDULER", "1") != "0" and vault.is_dir():
-        schedulers = [scheduler.scheduler(vault), reminder_scheduler.scheduler(vault)]
+    if os.getenv("GANDALF_SCHEDULER", "1") != "0" and memory.is_dir():
+        schedulers = [scheduler.scheduler(memory), reminder_scheduler.scheduler(memory)]
         for s in schedulers:
             s.start()
     yield
@@ -125,8 +127,8 @@ def health(claude: bool = False) -> dict:
     data = {
         "status": "ok",
         "version": app.version,
-        "vault": str(settings.vault_path),
-        "vault_exists": (settings.vault_path / "CLAUDE.md").is_file(),
+        "memory": str(settings.memory_path),
+        "memory_exists": (settings.memory_path / "CLAUDE.md").is_file(),
         "language": settings.language,
     }
     if claude:
@@ -153,25 +155,25 @@ class AskRequest(BaseModel):
 
 
 @app.post("/ask")
-def ask(req: AskRequest, vault: Path = Depends(get_vault)) -> dict:
+def ask(req: AskRequest, memory: Path = Depends(get_memory)) -> dict:
     previous = [x.model_dump() for x in req.previous]
     note = None
     if req.note:
-        path = (vault / req.note).resolve()
-        if not path.is_relative_to((vault / "wiki").resolve()) or path.suffix != ".md" or not path.is_file():
+        path = (memory / req.note).resolve()
+        if not path.is_relative_to((memory / "wiki").resolve()) or path.suffix != ".md" or not path.is_file():
             raise HTTPException(400, "invalid note (only notes in wiki/)")
         note_text = reader.read_text(path)
         # Study note: the user's annotations on the topic go along.
         if m := re.fullmatch(r"wiki/studies/([\w-]+)/[^_].*\.md", req.note):
             try:
-                mine = studies.list_annotations(vault, m.group(1), req.note)
+                mine = studies.list_annotations(memory, m.group(1), req.note)
             except (FileNotFoundError, studies.InvalidPath):
                 mine = []
             if mine:
                 note_text += "\n\n## The user's annotations on this topic\n" + "\n\n".join(a["text"] for a in mine)
         note = (req.note, note_text)
     try:
-        r = gandalf.ask(vault, req.text, req.source, req.force_tier, req.confirm, previous, note)
+        r = gandalf.ask(memory, req.text, req.source, req.force_tier, req.confirm, previous, note)
     except claude_cli.ClaudeUnavailable as e:
         raise HTTPException(503, str(e)) from e
     except claude_cli.ClaudeFailed as e:
@@ -185,44 +187,44 @@ class Continuation(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
 
 
-def _session_or_404(vault: Path, session_id: str) -> tier3.Session:
-    s = tier3.manager(vault).get(session_id)
+def _session_or_404(memory: Path, session_id: str) -> tier3.Session:
+    s = tier3.manager(memory).get(session_id)
     if not s:
         raise HTTPException(404, "session not found (sessions live only in the Bridge's memory)")
     return s
 
 
 @app.get("/sessions")
-def list_sessions(vault: Path = Depends(get_vault)) -> list[dict]:
-    return [s.summary() for s in tier3.manager(vault).sessions()]
+def list_sessions(memory: Path = Depends(get_memory)) -> list[dict]:
+    return [s.summary() for s in tier3.manager(memory).sessions()]
 
 
 @app.get("/sessions/{session_id}")
-def get_session(session_id: str, vault: Path = Depends(get_vault)) -> dict:
-    return _session_or_404(vault, session_id).summary()
+def get_session(session_id: str, memory: Path = Depends(get_memory)) -> dict:
+    return _session_or_404(memory, session_id).summary()
 
 
 @app.delete("/sessions/{session_id}")
-def cancel_session(session_id: str, vault: Path = Depends(get_vault)) -> dict:
-    _session_or_404(vault, session_id)
-    return tier3.manager(vault).cancel(session_id).summary()
+def cancel_session(session_id: str, memory: Path = Depends(get_memory)) -> dict:
+    _session_or_404(memory, session_id)
+    return tier3.manager(memory).cancel(session_id).summary()
 
 
 @app.post("/sessions/{session_id}/continue", status_code=201)
-def continue_session(session_id: str, c: Continuation, vault: Path = Depends(get_vault)) -> dict:
-    previous = _session_or_404(vault, session_id)
+def continue_session(session_id: str, c: Continuation, memory: Path = Depends(get_memory)) -> dict:
+    previous = _session_or_404(memory, session_id)
     if previous.status in tier3.ACTIVE:
         raise HTTPException(409, "the session is still running")
     if not previous.claude_session_id:
         raise HTTPException(409, "this session has no Claude Code id to resume")
-    new = tier3.manager(vault).create(c.text, source=previous.source, resumed_from=previous.id)
+    new = tier3.manager(memory).create(c.text, source=previous.source, resumed_from=previous.id)
     return new.summary()
 
 
 @app.websocket("/ws/stream/{session_id}")
 async def ws_stream(ws: WebSocket, session_id: str):
-    vault = get_settings().vault_path
-    m = tier3.manager(vault)
+    memory = get_settings().memory_path
+    m = tier3.manager(memory)
     s = m.get(session_id)
     await ws.accept()
     if not s:
@@ -264,10 +266,10 @@ class SkillRun(BaseModel):
     instruction: str = Field(default="", max_length=4000)
 
 
-def _last_by_intent(vault: Path, prefix: str) -> dict[str, dict]:
+def _last_by_intent(memory: Path, prefix: str) -> dict[str, dict]:
     now = clock.now()
     last: dict[str, dict] = {}
-    for r in read_receipts(vault, (now - timedelta(days=60)).date(), now.date()):
+    for r in read_receipts(memory, (now - timedelta(days=60)).date(), now.date()):
         intent = r["intent"] or ""
         if intent.startswith(prefix):
             last[intent[len(prefix):]] = to_json(r)
@@ -275,17 +277,17 @@ def _last_by_intent(vault: Path, prefix: str) -> dict[str, dict]:
 
 
 @app.get("/skills")
-def skills(vault: Path = Depends(get_vault)) -> list[dict]:
-    last = _last_by_intent(vault, "skill:")
+def skills(memory: Path = Depends(get_memory)) -> list[dict]:
+    last = _last_by_intent(memory, "skill:")
     return [{**asdict(s), "last_run": last.get(s.name)} for s in list_skills()]
 
 
 @app.post("/skills/{name}/run", status_code=201)
-def run_skill(name: str, e: SkillRun, vault: Path = Depends(get_vault)) -> dict:
+def run_skill(name: str, e: SkillRun, memory: Path = Depends(get_memory)) -> dict:
     if not has_skill(name):
         raise HTTPException(404, f"skill not found: {name}")
     task = e.instruction.strip() or "Run this skill with its defaults."
-    s = tier3.manager(vault).create(task, request=f"Skill /{name}" + (f": {e.instruction.strip()}" if e.instruction.strip() else ""), skill=name)
+    s = tier3.manager(memory).create(task, request=f"Skill /{name}" + (f": {e.instruction.strip()}" if e.instruction.strip() else ""), skill=name)
     return s.summary()
 
 
@@ -299,7 +301,7 @@ class NewRoutine(BaseModel):
     skill: str | None = None
     action: str | None = None
     description: str = Field(default="", max_length=4000)
-    output: Literal["vault", "ephemeral"] = "vault"
+    output: Literal["memory", "ephemeral"] = "memory"
     notify: bool = False
 
 
@@ -310,12 +312,12 @@ class RoutineEdit(BaseModel):
     skill: str | None = None
     action: str | None = None
     description: str | None = Field(default=None, max_length=4000)
-    output: Literal["vault", "ephemeral"] | None = None
+    output: Literal["memory", "ephemeral"] | None = None
     notify: bool | None = None
 
 
-def _routine_json(vault: Path, r, history: dict[str, list[dict]]) -> dict:
-    s = scheduler.scheduler(vault)
+def _routine_json(memory: Path, r, history: dict[str, list[dict]]) -> dict:
+    s = scheduler.scheduler(memory)
     next_run = s.next_run(r)
     runs = history.get(r.slug, [])
     hist = [
@@ -326,9 +328,9 @@ def _routine_json(vault: Path, r, history: dict[str, list[dict]]) -> dict:
 
 
 @app.get("/routines")
-def list_routines(vault: Path = Depends(get_vault)) -> list[dict]:
-    hist = routine_status.history(vault, clock.now())
-    return [_routine_json(vault, r, hist) for r in reader.read_routines(vault)]
+def list_routines(memory: Path = Depends(get_memory)) -> list[dict]:
+    hist = routine_status.history(memory, clock.now())
+    return [_routine_json(memory, r, hist) for r in reader.read_routines(memory)]
 
 
 @app.get("/routines/actions")
@@ -337,48 +339,48 @@ def internal_actions() -> list[dict]:
 
 
 @app.post("/routines", status_code=201)
-def create_routine(n: NewRoutine, vault: Path = Depends(get_vault)) -> dict:
+def create_routine(n: NewRoutine, memory: Path = Depends(get_memory)) -> dict:
     try:
         slug = routine_files.create(
-            vault, clock.tz(), name=n.name, cron_expr=n.cron, tier=n.tier, active=n.active,
+            memory, clock.tz(), name=n.name, cron_expr=n.cron, tier=n.tier, active=n.active,
             skill=n.skill, action=n.action, description=n.description, output=n.output, notify=n.notify,
         )
     except routine_files.RoutineExists as e:
         raise HTTPException(409, f"a routine with this name already exists ({e})") from e
     except routine_files.InvalidRoutine as e:
         raise HTTPException(422, str(e)) from e
-    scheduler.scheduler(vault).reload()
-    r = next(x for x in reader.read_routines(vault) if x.slug == slug)
-    return _routine_json(vault, r, {})
+    scheduler.scheduler(memory).reload()
+    r = next(x for x in reader.read_routines(memory) if x.slug == slug)
+    return _routine_json(memory, r, {})
 
 
 @app.patch("/routines/{slug}")
-def edit_routine(slug: str, e: RoutineEdit, vault: Path = Depends(get_vault)) -> dict:
+def edit_routine(slug: str, e: RoutineEdit, memory: Path = Depends(get_memory)) -> dict:
     fields = {k: getattr(e, k) for k in e.model_fields_set if k != "description"}
     try:
-        routine_files.update(vault, clock.tz(), slug, fields, e.description if "description" in e.model_fields_set else None)
+        routine_files.update(memory, clock.tz(), slug, fields, e.description if "description" in e.model_fields_set else None)
     except routine_files.RoutineNotFound as ex:
         raise HTTPException(404, "routine not found") from ex
     except routine_files.InvalidRoutine as ex:
         raise HTTPException(422, str(ex)) from ex
-    scheduler.scheduler(vault).reload()
-    r = next(x for x in reader.read_routines(vault) if x.slug == slug)
-    return _routine_json(vault, r, routine_status.history(vault, clock.now()))
+    scheduler.scheduler(memory).reload()
+    r = next(x for x in reader.read_routines(memory) if x.slug == slug)
+    return _routine_json(memory, r, routine_status.history(memory, clock.now()))
 
 
 @app.delete("/routines/{slug}", status_code=204)
-def remove_routine(slug: str, vault: Path = Depends(get_vault)) -> None:
+def remove_routine(slug: str, memory: Path = Depends(get_memory)) -> None:
     try:
-        routine_files.remove(vault, slug)
+        routine_files.remove(memory, slug)
     except routine_files.RoutineNotFound as ex:
         raise HTTPException(404, "routine not found") from ex
-    scheduler.scheduler(vault).reload()
+    scheduler.scheduler(memory).reload()
 
 
 @app.post("/routines/{slug}/run")
-def run_routine(slug: str, vault: Path = Depends(get_vault)) -> dict:
+def run_routine(slug: str, memory: Path = Depends(get_memory)) -> dict:
     try:
-        return scheduler.scheduler(vault).run(slug, manual=True)
+        return scheduler.scheduler(memory).run(slug, manual=True)
     except KeyError as ex:
         raise HTTPException(404, "routine not found") from ex
 
@@ -409,16 +411,16 @@ def discard_ephemeral(ephemeral_id: str) -> None:
 
 
 @app.post("/ephemeral/{ephemeral_id}/save", status_code=201)
-def save_ephemeral(ephemeral_id: str, s: SaveEphemeral, vault: Path = Depends(get_vault)) -> dict:
-    """Saves to the vault, by the user's choice, an excerpt (or all) of an ephemeral item."""
+def save_ephemeral(ephemeral_id: str, s: SaveEphemeral, memory: Path = Depends(get_memory)) -> dict:
+    """Saves to the memory, by the user's choice, an excerpt (or all) of an ephemeral item."""
     e = _ephemeral_or_404(ephemeral_id)
     text = (s.text or e.text).strip()
     if s.target == "task":
         if not s.text or len(text) > 500:
             raise HTTPException(422, "give the task text (up to 500 characters)")
-        return {"task": task_dict(writer.add_task(vault, text))}
-    path = writer.save_raw(vault, text, clock.now(), "hud", title=e.title)
-    return {"file": path.relative_to(vault).as_posix()}
+        return {"task": task_dict(writer.add_task(memory, text))}
+    path = writer.save_raw(memory, text, clock.now(), "hud", title=e.title)
+    return {"file": path.relative_to(memory).as_posix()}
 
 
 @app.get("/ephemeral/{ephemeral_id}")
@@ -436,17 +438,17 @@ class NewResearch(BaseModel):
 
 
 @app.post("/research", status_code=201)
-def new_research(p: NewResearch, vault: Path = Depends(get_vault)) -> dict:
-    """Direct research (e.g. "Update" in the Library), without going through Tier 2. Web only, no vault."""
+def new_research(p: NewResearch, memory: Path = Depends(get_memory)) -> dict:
+    """Direct research (e.g. "Update" in the Library), without going through Tier 2. Web only, no memory."""
     task = p.request
     if p.update:
         try:
-            saved = library.context_for_update(vault, p.update)
+            saved = library.context_for_update(memory, p.update)
         except (FileNotFoundError, library.InvalidTopic) as e:
             raise HTTPException(404, "topic not found in the Library") from e
         task += gandalf.UPDATE_CONTEXT.format(saved=saved)
-    topic = p.topic or (library.detail(vault, p.update)["title"] if p.update else p.request[:60])
-    s = tier3.manager(vault).create(
+    topic = p.topic or (library.detail(memory, p.update)["title"] if p.update else p.request[:60])
+    s = tier3.manager(memory).create(
         task, request=p.request, skill="research", output="research",
         research={"topic": topic, "kind": p.kind, "request": p.request, "slug": p.update},
     )
@@ -454,7 +456,7 @@ def new_research(p: NewResearch, vault: Path = Depends(get_vault)) -> dict:
 
 
 @app.post("/research/{ephemeral_id}/save", status_code=201)
-def save_research(ephemeral_id: str, vault: Path = Depends(get_vault)) -> dict:
+def save_research(ephemeral_id: str, memory: Path = Depends(get_memory)) -> dict:
     """The user approved: another session (no web, writes only in wiki/library/) organizes it by topic."""
     e = _ephemeral_or_404(ephemeral_id)
     if not e.research:
@@ -465,7 +467,7 @@ def save_research(ephemeral_id: str, vault: Path = Depends(get_vault)) -> dict:
         f"Save this {meta.get('kind', 'research')} in the Library. Topic: {meta.get('topic')}. {target}\n"
         f"The user's original request: {meta.get('request', '')}\n\n<report>\n{e.text}\n</report>"
     )
-    s = tier3.manager(vault).create(
+    s = tier3.manager(memory).create(
         task, request=f"Save to the Library: {meta.get('topic')}", skill="save-research", output="library",
         research={**meta, "ephemeral_id": e.id},
     )
@@ -473,23 +475,23 @@ def save_research(ephemeral_id: str, vault: Path = Depends(get_vault)) -> dict:
 
 
 @app.get("/library")
-def list_library(vault: Path = Depends(get_vault)) -> list[dict]:
-    return library.list_topics(vault)
+def list_library(memory: Path = Depends(get_memory)) -> list[dict]:
+    return library.list_topics(memory)
 
 
 @app.get("/library/{slug}")
-def library_topic(slug: str, vault: Path = Depends(get_vault)) -> dict:
+def library_topic(slug: str, memory: Path = Depends(get_memory)) -> dict:
     try:
-        return library.detail(vault, slug)
+        return library.detail(memory, slug)
     except (FileNotFoundError, library.InvalidTopic) as e:
         raise HTTPException(404, "topic not found") from e
 
 
 @app.post("/library/{slug}/tasks", status_code=201)
-def library_tasks(slug: str, vault: Path = Depends(get_vault)) -> dict:
+def library_tasks(slug: str, memory: Path = Depends(get_memory)) -> dict:
     """Open checklist items of the topic become tasks (no AI)."""
     try:
-        return {"created": library.checklist_to_tasks(vault, slug, clock.now().date())}
+        return {"created": library.checklist_to_tasks(memory, slug, clock.now().date())}
     except (FileNotFoundError, library.InvalidTopic) as e:
         raise HTTPException(404, "topic or checklist not found") from e
 
@@ -513,19 +515,19 @@ def _studies(fn):
 
 
 @app.get("/studies")
-def list_studies(vault: Path = Depends(get_vault)) -> list[dict]:
-    return studies.list_subjects(vault)
+def list_studies(memory: Path = Depends(get_memory)) -> list[dict]:
+    return studies.list_subjects(memory)
 
 
 @app.get("/studies/{subject}")
-def study_subject(subject: str, vault: Path = Depends(get_vault)) -> dict:
-    return _studies(lambda: studies.detail(vault, subject))
+def study_subject(subject: str, memory: Path = Depends(get_memory)) -> dict:
+    return _studies(lambda: studies.detail(memory, subject))
 
 
 @app.delete("/studies/{subject}")
-def remove_study_subject(subject: str, vault: Path = Depends(get_vault)) -> dict:
-    """Deletes the whole subject: topics, annotations and uploaded material. No undo (besides the vault's git)."""
-    return _studies(lambda: studies.remove_subject(vault, subject))
+def remove_study_subject(subject: str, memory: Path = Depends(get_memory)) -> dict:
+    """Deletes the whole subject: topics, annotations and uploaded material. No undo (besides the memory's git)."""
+    return _studies(lambda: studies.remove_subject(memory, subject))
 
 
 class QuizRequest(BaseModel):
@@ -553,15 +555,15 @@ def _quiz(fn):
 
 
 @app.post("/studies/{subject}/quiz")
-def study_quiz(subject: str, q: QuizRequest, vault: Path = Depends(get_vault)) -> dict:
+def study_quiz(subject: str, q: QuizRequest, memory: Path = Depends(get_memory)) -> dict:
     """Ephemeral quiz (not stored): questions from the topic or, with no topic, from the whole subject."""
-    return _quiz(lambda: quiz.generate(vault, subject, q.count, q.type, clock.now(), q.topic or None))
+    return _quiz(lambda: quiz.generate(memory, subject, q.count, q.type, clock.now(), q.topic or None))
 
 
 @app.post("/studies/{subject}/quiz/grade")
-def study_quiz_grade(subject: str, r: QuizAnswer, vault: Path = Depends(get_vault)) -> dict:
+def study_quiz_grade(subject: str, r: QuizAnswer, memory: Path = Depends(get_memory)) -> dict:
     """Grades a free-text quiz answer (the HUD checks multiple choice by itself)."""
-    return _quiz(lambda: quiz.grade(vault, subject, r.question, r.model_answer, r.answer, clock.now(), r.topic or None))
+    return _quiz(lambda: quiz.grade(memory, subject, r.question, r.model_answer, r.answer, clock.now(), r.topic or None))
 
 
 class NewAnnotation(BaseModel):
@@ -578,24 +580,24 @@ class AnnotationEdit(BaseModel):
 
 
 @app.get("/studies/{subject}/annotations")
-def study_annotations(subject: str, topic: str | None = None, vault: Path = Depends(get_vault)) -> list[dict]:
+def study_annotations(subject: str, topic: str | None = None, memory: Path = Depends(get_memory)) -> list[dict]:
     """The user's annotations: for one topic, or all (general ones have an empty `topic`)."""
-    return _studies(lambda: studies.list_annotations(vault, subject, topic))
+    return _studies(lambda: studies.list_annotations(memory, subject, topic))
 
 
 @app.post("/studies/{subject}/annotations", status_code=201)
-def create_study_annotation(subject: str, a: NewAnnotation, vault: Path = Depends(get_vault)) -> dict:
-    return _studies(lambda: studies.create_annotation(vault, subject, a.text, clock.now(), a.title, a.topic, a.source))
+def create_study_annotation(subject: str, a: NewAnnotation, memory: Path = Depends(get_memory)) -> dict:
+    return _studies(lambda: studies.create_annotation(memory, subject, a.text, clock.now(), a.title, a.topic, a.source))
 
 
 @app.put("/studies/{subject}/annotations")
-def edit_study_annotation(subject: str, a: AnnotationEdit, vault: Path = Depends(get_vault)) -> dict:
-    return _studies(lambda: studies.update_annotation(vault, subject, a.file, a.text, clock.now(), a.title))
+def edit_study_annotation(subject: str, a: AnnotationEdit, memory: Path = Depends(get_memory)) -> dict:
+    return _studies(lambda: studies.update_annotation(memory, subject, a.file, a.text, clock.now(), a.title))
 
 
 @app.delete("/studies/{subject}/annotations", status_code=204)
-def remove_study_annotation(subject: str, file: str, vault: Path = Depends(get_vault)) -> None:
-    _studies(lambda: studies.remove_annotation(vault, subject, file))
+def remove_study_annotation(subject: str, file: str, memory: Path = Depends(get_memory)) -> None:
+    _studies(lambda: studies.remove_annotation(memory, subject, file))
 
 
 @app.post("/studies/{subject}/material", status_code=201)
@@ -605,14 +607,14 @@ async def study_material(
     text: str = Form(default=""),
     topic: str = Form(default=""),
     structure: bool = Form(default=True),
-    vault: Path = Depends(get_vault),
+    memory: Path = Depends(get_memory),
 ) -> dict:
     """Documents and/or text about the subject: stored in `_sources/` and (by default) Gandalf is asked to
     structure them into new topics or add them to existing ones (structure-material skill)."""
     now = clock.now()
-    _studies(lambda: studies.subject_folder(vault, subject))
+    _studies(lambda: studies.subject_folder(memory, subject))
     if topic:
-        _studies(lambda: studies.subject_note(vault, subject, topic))
+        _studies(lambda: studies.subject_note(memory, subject, topic))
     if not files and not text.strip():
         raise HTTPException(422, "send a file or paste some text")
     saved: list[str] = []
@@ -621,12 +623,12 @@ async def study_material(
         if len(data) > 25 * 1024 * 1024:
             raise HTTPException(413, f"{f.filename}: larger than 25 MB")
         try:
-            saved += studies.save_source(vault, subject, f.filename or "file", data, now)
+            saved += studies.save_source(memory, subject, f.filename or "file", data, now)
         except ValueError as e:
             raise HTTPException(422, str(e)) from e
     if text.strip():
         first = text.strip().splitlines()[0][:50] or "text"
-        saved += studies.save_source(vault, subject, f"{first}.md", text.strip().encode("utf-8"), now)
+        saved += studies.save_source(memory, subject, f"{first}.md", text.strip().encode("utf-8"), now)
     if not structure:
         return {"sources": saved, "session": None}
     target = f" The user sent this with the topic `{topic}` in mind: prioritize adding to it." if topic else ""
@@ -636,25 +638,25 @@ async def study_material(
         + f"\n{target}"
     )
     skill = "structure-material" if has_skill("structure-material") else None
-    s = tier3.manager(vault).create(task, request=f"Material for {subject}: {', '.join(x.split('/')[-1] for x in saved)[:120]}", skill=skill)
+    s = tier3.manager(memory).create(task, request=f"Material for {subject}: {', '.join(x.split('/')[-1] for x in saved)[:120]}", skill=skill)
     return {"sources": saved, "session": s.summary()}
 
 
 @app.post("/studies/generate", status_code=201)
-def generate_study(p: StudyRequest, vault: Path = Depends(get_vault)) -> dict:
+def generate_study(p: StudyRequest, memory: Path = Depends(get_memory)) -> dict:
     """Generates material with Claude Code (prepare-studies skill): a new subject, a new topic or deepening a topic."""
     skill = "prepare-studies" if has_skill("prepare-studies") else None
     if p.kind == "deepen":
-        if not p.note or not p.note.startswith("wiki/studies/") or ".." in p.note or not (vault / p.note).is_file():
+        if not p.note or not p.note.startswith("wiki/studies/") or ".." in p.note or not (memory / p.note).is_file():
             raise HTTPException(400, "give the note (wiki/studies/...)")
         extra = f" The user's request: {p.request.strip()}" if p.request.strip() else ""
         task = f"Deepen the existing topic `{p.note}`.{extra}"
-        s = tier3.manager(vault).create(task, request=f"Deepen: {p.note.split('/')[-1]}", skill=skill)
+        s = tier3.manager(memory).create(task, request=f"Deepen: {p.note.split('/')[-1]}", skill=skill)
         return s.summary()
     if not p.request.strip():
         raise HTTPException(422, "say what to study")
     prefix = "Complete the existing subject with a new topic" if p.kind == "topic" else "Put together the study material"
-    s = tier3.manager(vault).create(f"{prefix}: {p.request}", request=f"Studies: {p.request[:80]}", skill=skill)
+    s = tier3.manager(memory).create(f"{prefix}: {p.request}", request=f"Studies: {p.request[:80]}", skill=skill)
     return s.summary()
 
 
@@ -712,11 +714,11 @@ def list_receipts(
     limit: int = 200,
     tier: int | None = None,
     source: str | None = None,
-    vault: Path = Depends(get_vault),
+    memory: Path = Depends(get_memory),
 ) -> list[dict]:
     """Receipts from the last `days`, newest first."""
     today = clock.now().date()
-    items = read_receipts(vault, today - timedelta(days=max(0, min(days, 366))), today)
+    items = read_receipts(memory, today - timedelta(days=max(0, min(days, 366))), today)
     if tier is not None:
         items = [r for r in items if r["tier"] == tier]
     if source:
@@ -725,23 +727,23 @@ def list_receipts(
 
 
 @app.get("/receipts/{receipt_id}")
-def read_receipt(receipt_id: str, vault: Path = Depends(get_vault)) -> dict:
+def read_receipt(receipt_id: str, memory: Path = Depends(get_memory)) -> dict:
     if not re.fullmatch(r"[0-9A-Z]{26}", receipt_id):
         raise HTTPException(404, "receipt not found")
     today = clock.now().date()
-    r = next((x for x in read_receipts(vault, today - timedelta(days=366), today) if x["id"] == receipt_id), None)
+    r = next((x for x in read_receipts(memory, today - timedelta(days=366), today) if x["id"] == receipt_id), None)
     if not r:
         raise HTTPException(404, "receipt not found")
-    return {**to_json(r), **browse.read_note(vault, r["file"])}
+    return {**to_json(r), **browse.read_note(memory, r["file"])}
 
 
 @app.get("/costs")
-def costs(days: int = 30, vault: Path = Depends(get_vault)) -> dict:
+def costs(days: int = 30, memory: Path = Depends(get_memory)) -> dict:
     """Usage per day and totals. The cost is the "API equivalent" reported by Claude Code (for reference)."""
     now = clock.now()
     today = now.date()
-    by_day = costs_by_day(read_receipts(vault, today - timedelta(days=max(1, min(days, 366)) - 1), today))
-    month = costs_by_day(read_receipts(vault, today.replace(day=1), today))
+    by_day = costs_by_day(read_receipts(memory, today - timedelta(days=max(1, min(days, 366)) - 1), today))
+    month = costs_by_day(read_receipts(memory, today.replace(day=1), today))
 
     def total(items: list[dict]) -> dict:
         return {
@@ -762,37 +764,125 @@ def costs(days: int = 30, vault: Path = Depends(get_vault)) -> dict:
     }
 
 
-# ---------- Vault (read-only) ----------
+# ---------- Memory (browse and edit) ----------
 
-@app.get("/vault/tree")
-def vault_tree(vault: Path = Depends(get_vault)) -> list[dict]:
-    return browse.tree(vault)
-
-
-@app.get("/vault/note")
-def vault_note(path: str, vault: Path = Depends(get_vault)) -> dict:
+@contextmanager
+def _memory_errors():
+    """The memory's file errors as HTTP errors."""
     try:
-        return browse.read_note(vault, path)
+        yield
     except browse.InvalidPath as e:
         raise HTTPException(400, f"invalid path: {e}") from e
     except FileNotFoundError as e:
         raise HTTPException(404, "file not found") from e
+    except FileExistsError as e:
+        raise HTTPException(409, f"already exists: {e}") from e
+
+
+@app.get("/memory/tree")
+def memory_tree(memory: Path = Depends(get_memory)) -> list[dict]:
+    return browse.tree(memory)
+
+
+@app.get("/memory/note")
+def memory_note(path: str, memory: Path = Depends(get_memory)) -> dict:
+    with _memory_errors():
+        try:
+            note = browse.read_note(memory, path)
+        except FileNotFoundError:
+            # [[note]] by name only: the unique note with that name, wherever it is.
+            found = links.Resolver(memory)(path.removesuffix(".md"))
+            if not found:
+                raise
+            note = browse.read_note(memory, found)
+    top = Path(note["path"].replace("\\", "/").lstrip("/")).parts[:1]
+    return {**note, "editable": not note["binary"] and not (top and top[0] in edit.READ_ONLY)}
+
+
+class NoteSave(BaseModel):
+    path: str = Field(min_length=1, max_length=500)
+    content: str = Field(max_length=2 * 1024 * 1024)
+    # The version the editor opened (from GET /memory/note); null skips the conflict check.
+    base: str | None = Field(default=None, max_length=40)
+
+
+class NoteCreate(BaseModel):
+    path: str = Field(min_length=1, max_length=500)
+    content: str = Field(default="", max_length=2 * 1024 * 1024)
+
+
+class NoteMove(BaseModel):
+    src: str = Field(min_length=1, max_length=500)
+    dst: str = Field(min_length=1, max_length=500)
+
+
+@app.put("/memory/note")
+def memory_save(n: NoteSave, memory: Path = Depends(get_memory)) -> dict:
+    try:
+        with _memory_errors():
+            return {"path": n.path, "version": edit.save(memory, n.path, n.content, n.base)}
+    except edit.Conflict as e:
+        raise HTTPException(409, "the note changed since you opened it (Gandalf or another device saved it)") from e
+
+
+@app.post("/memory/note", status_code=201)
+def memory_create(n: NoteCreate, memory: Path = Depends(get_memory)) -> dict:
+    with _memory_errors():
+        return {"path": edit.create(memory, n.path, n.content)}
+
+
+@app.delete("/memory/note")
+def memory_delete(path: str, memory: Path = Depends(get_memory)) -> dict:
+    with _memory_errors():
+        return {"trash": edit.delete(memory, path, clock.now())}
+
+
+@app.post("/memory/move")
+def memory_move(m: NoteMove, memory: Path = Depends(get_memory)) -> dict:
+    with _memory_errors():
+        return edit.move(memory, m.src, m.dst)
+
+
+@app.get("/memory/file")
+def memory_file(path: str, memory: Path = Depends(get_memory)) -> FileResponse:
+    """A file as it is (PDFs and images shown in the HUD)."""
+    with _memory_errors():
+        target = browse.resolve(memory, path)
+        if not target.is_file():
+            raise FileNotFoundError(path)
+    return FileResponse(target)
+
+
+@app.get("/memory/search")
+def memory_search(q: str = Query(min_length=1, max_length=200), memory: Path = Depends(get_memory)) -> list[dict]:
+    return links.search(memory, q)
+
+
+@app.get("/memory/backlinks")
+def memory_backlinks(path: str, memory: Path = Depends(get_memory)) -> list[dict]:
+    return links.backlinks(memory, path)
+
+
+@app.get("/memory/health")
+def memory_health(memory: Path = Depends(get_memory)) -> dict:
+    """The wiki's mechanical health check (no AI): broken links, orphans, missing index entries…"""
+    return links.health(memory)
 
 
 # ---------- Today ----------
 
 @app.get("/today")
-def today(vault: Path = Depends(get_vault)) -> dict:
-    """The day's dashboard, read straight from the vault (pure Tier 1)."""
+def today(memory: Path = Depends(get_memory)) -> dict:
+    """The day's dashboard, read straight from the memory (pure Tier 1)."""
     now = clock.now()
     day = now.date()
-    tasks = reader.read_tasks(vault)
+    tasks = reader.read_tasks(memory)
     open_tasks = sort_by_priority(tasks, day)
     return {
         "date": day.isoformat(),
         "date_long": en.date_long(day),
         "now": now.isoformat(timespec="seconds"),
-        "agenda": [asdict(e) for e in reader.read_agenda(vault, day)],
+        "agenda": [asdict(e) for e in reader.read_agenda(memory, day)],
         "priorities": [task_dict(x) for x in open_tasks[:3]],
         "tasks": {
             "open": len(open_tasks),
@@ -800,7 +890,7 @@ def today(vault: Path = Depends(get_vault)) -> dict:
             "overdue": sum(1 for x in open_tasks if x.due and x.due < day),
             "done_today": sum(1 for x in tasks if x.done and x.done_on == day),
         },
-        "routines": routine_status.routines_today(vault, now, clock.tz()),
+        "routines": routine_status.routines_today(memory, now, clock.tz()),
     }
 
 
@@ -821,27 +911,27 @@ class TaskEdit(BaseModel):
 
 
 @app.get("/tasks")
-def list_tasks(include_done: bool = False, vault: Path = Depends(get_vault)) -> list[dict]:
+def list_tasks(include_done: bool = False, memory: Path = Depends(get_memory)) -> list[dict]:
     day = clock.now().date()
-    tasks = reader.read_tasks(vault)
+    tasks = reader.read_tasks(memory)
     open_tasks = sort_by_priority(tasks, day)
     done = [x for x in tasks if x.done] if include_done else []
     return [task_dict(x) for x in open_tasks + done]
 
 
 @app.post("/tasks", status_code=201)
-def create_task(new: NewTask, vault: Path = Depends(get_vault)) -> dict:
+def create_task(new: NewTask, memory: Path = Depends(get_memory)) -> dict:
     tags = [x.lstrip("#") for x in new.tags]
-    x = writer.add_task(vault, new.text, due=new.due, priority=new.priority, tags=tags)
+    x = writer.add_task(memory, new.text, due=new.due, priority=new.priority, tags=tags)
     return task_dict(x)
 
 
 @app.patch("/tasks/{task_id}")
-def edit_task(task_id: str, edit: TaskEdit, vault: Path = Depends(get_vault)) -> dict:
+def edit_task(task_id: str, edit: TaskEdit, memory: Path = Depends(get_memory)) -> dict:
     fields = edit.model_fields_set
     try:
         x = writer.update_task(
-            vault,
+            memory,
             task_id,
             clock.now().date(),
             done=edit.done,
@@ -869,10 +959,10 @@ class ReminderEdit(BaseModel):
     snooze_min: int | None = Field(default=None, ge=1, le=7 * 24 * 60)
 
 
-def _reminders_json(vault: Path) -> list[dict]:
-    s = reminder_scheduler.scheduler(vault)
+def _reminders_json(memory: Path) -> list[dict]:
+    s = reminder_scheduler.scheduler(memory)
     now = clock.now()
-    items = reminder_store.read(vault, clock.tz())
+    items = reminder_store.read(memory, clock.tz())
     pending = sorted((x for x in items if not x.done), key=lambda x: s.next_fire(x, now) or now)
     fired = sorted((x for x in items if x.done and not x.recurring), key=lambda x: x.done_at or now, reverse=True)
     # "Just fired": the HUD offers to snooze (on iPhone the notification has no buttons).
@@ -884,25 +974,25 @@ def _reminders_json(vault: Path) -> list[dict]:
 
 
 @app.get("/reminders")
-def list_reminders(vault: Path = Depends(get_vault)) -> list[dict]:
+def list_reminders(memory: Path = Depends(get_memory)) -> list[dict]:
     """Pending ones (nearest first) and the last 10 fired."""
-    return _reminders_json(vault)
+    return _reminders_json(memory)
 
 
 @app.post("/reminders", status_code=201)
-def create_reminder(n: NewReminder, vault: Path = Depends(get_vault)) -> dict:
+def create_reminder(n: NewReminder, memory: Path = Depends(get_memory)) -> dict:
     tz = clock.tz()
     when = n.when.astimezone(tz) if n.when and n.when.tzinfo else (n.when.replace(tzinfo=tz) if n.when else None)
     try:
-        x = reminder_store.add(vault, tz, n.text, when=when, recurrence=n.recurrence)
+        x = reminder_store.add(memory, tz, n.text, when=when, recurrence=n.recurrence)
     except reminder_store.InvalidReminder as e:
         raise HTTPException(422, str(e)) from e
-    reminder_scheduler.reload_if_running(vault)
-    return reminder_scheduler.reminder_json(x, reminder_scheduler.scheduler(vault).next_fire(x))
+    reminder_scheduler.reload_if_running(memory)
+    return reminder_scheduler.reminder_json(x, reminder_scheduler.scheduler(memory).next_fire(x))
 
 
 @app.patch("/reminders/{reminder_id}")
-def edit_reminder(reminder_id: str, e: ReminderEdit, vault: Path = Depends(get_vault)) -> dict:
+def edit_reminder(reminder_id: str, e: ReminderEdit, memory: Path = Depends(get_memory)) -> dict:
     """Complete/reopen, change the text, reschedule or snooze N minutes from now."""
     tz = clock.tz()
     now = clock.now()
@@ -912,22 +1002,22 @@ def edit_reminder(reminder_id: str, e: ReminderEdit, vault: Path = Depends(get_v
     elif when is not None:
         when = when.astimezone(tz) if when.tzinfo else when.replace(tzinfo=tz)
     try:
-        x = reminder_store.update(vault, tz, reminder_id, done=e.done, text=e.text, when=when, now=now)
+        x = reminder_store.update(memory, tz, reminder_id, done=e.done, text=e.text, when=when, now=now)
     except reminder_store.ReminderNotFound as ex:
         raise HTTPException(404, "reminder not found (the file may have changed; reload)") from ex
     except reminder_store.InvalidReminder as ex:
         raise HTTPException(422, str(ex)) from ex
-    reminder_scheduler.reload_if_running(vault)
-    return reminder_scheduler.reminder_json(x, reminder_scheduler.scheduler(vault).next_fire(x))
+    reminder_scheduler.reload_if_running(memory)
+    return reminder_scheduler.reminder_json(x, reminder_scheduler.scheduler(memory).next_fire(x))
 
 
 @app.delete("/reminders/{reminder_id}", status_code=204)
-def remove_reminder(reminder_id: str, vault: Path = Depends(get_vault)) -> None:
+def remove_reminder(reminder_id: str, memory: Path = Depends(get_memory)) -> None:
     try:
-        reminder_store.remove(vault, clock.tz(), reminder_id)
+        reminder_store.remove(memory, clock.tz(), reminder_id)
     except reminder_store.ReminderNotFound as ex:
         raise HTTPException(404, "reminder not found") from ex
-    reminder_scheduler.reload_if_running(vault)
+    reminder_scheduler.reload_if_running(memory)
 
 
 # ---------- Pomodoro ----------
@@ -939,17 +1029,17 @@ class Pomodoro(BaseModel):
 
 
 @app.post("/pomodoro")
-def schedule_pomodoro(p: Pomodoro, vault: Path = Depends(get_vault)) -> dict:
+def schedule_pomodoro(p: Pomodoro, memory: Path = Depends(get_memory)) -> dict:
     """The HUD schedules the push for the end of the phase: it reaches the phone even with the app closed (browsers pause timers)."""
     end = p.end if p.end.tzinfo else p.end.replace(tzinfo=clock.tz())
     if end <= clock.now():
         raise HTTPException(422, "the end time has already passed")
-    return {"scheduled": reminder_scheduler.scheduler(vault).schedule_alert("pomodoro", end, p.title, p.body)}
+    return {"scheduled": reminder_scheduler.scheduler(memory).schedule_alert("pomodoro", end, p.title, p.body)}
 
 
 @app.delete("/pomodoro")
-def cancel_pomodoro(vault: Path = Depends(get_vault)) -> dict:
-    return {"cancelled": reminder_scheduler.scheduler(vault).cancel_alert("pomodoro")}
+def cancel_pomodoro(memory: Path = Depends(get_memory)) -> dict:
+    return {"cancelled": reminder_scheduler.scheduler(memory).cancel_alert("pomodoro")}
 
 
 # ---------- Notifications (Web Push) ----------
@@ -1025,7 +1115,7 @@ def get_proposal(proposal_id: str) -> dict:
 
 
 @app.post("/proposals/{proposal_id}/confirm", status_code=201)
-def confirm_proposal(proposal_id: str, c: Confirmation, vault: Path = Depends(get_vault)) -> dict:
+def confirm_proposal(proposal_id: str, c: Confirmation, memory: Path = Depends(get_memory)) -> dict:
     """The user confirmed: opens a short session with the `schedule-event` skill to create exactly this event."""
     p = _proposal_or_404(proposal_id)
     if p.status == "confirmed":
@@ -1041,7 +1131,7 @@ def confirm_proposal(proposal_id: str, c: Confirmation, vault: Path = Depends(ge
         "Create this event on the primary Google Calendar, with exactly these create_event tool parameters "
         "(don't change anything):\n```json\n" + json.dumps(args, ensure_ascii=False, indent=1) + "\n```"
     )
-    s = tier3.manager(vault).create(
+    s = tier3.manager(memory).create(
         task,
         request=f"Add to calendar: {event.title} ({en.date_long(date.fromisoformat(event.date))})",
         source=p.source if p.source in ("hud", "voice") else "hud",
@@ -1065,21 +1155,38 @@ class Capture(BaseModel):
     text: str = Field(min_length=1, max_length=20000)
     title: str | None = None
     source: Source = "hud"
+    # answer: a chat answer the user chose to keep (compile-raw folds it into the wiki).
+    kind: Literal["capture", "answer"] = "capture"
 
 
 @app.post("/raw", status_code=201)
-def capture(c: Capture, vault: Path = Depends(get_vault)) -> dict:
-    path = writer.save_raw(vault, c.text, clock.now(), c.source, c.title)
-    return {"file": path.relative_to(vault).as_posix()}
+def capture(c: Capture, memory: Path = Depends(get_memory)) -> dict:
+    path = writer.save_raw(memory, c.text, clock.now(), c.source, c.title, c.kind)
+    return {"file": path.relative_to(memory).as_posix()}
 
 
 @app.post("/raw/file", status_code=201)
-async def capture_file(file: UploadFile = File(...), vault: Path = Depends(get_vault)) -> dict:
+async def capture_file(file: UploadFile = File(...), memory: Path = Depends(get_memory)) -> dict:
     data = await file.read()
     if len(data) > 25 * 1024 * 1024:
         raise HTTPException(413, "file larger than 25 MB")
-    path = writer.save_raw_file(vault, file.filename or "file", data, clock.now())
-    return {"file": path.relative_to(vault).as_posix()}
+    path = writer.save_raw_file(memory, file.filename or "file", data, clock.now())
+    return {"file": path.relative_to(memory).as_posix()}
+
+
+class Clip(BaseModel):
+    url: str = Field(min_length=8, max_length=2000)
+    note: str = Field(default="", max_length=2000)
+
+
+@app.post("/raw/url", status_code=201)
+def capture_url(c: Clip, memory: Path = Depends(get_memory)) -> dict:
+    """Web clipper: the page's main text as Markdown in raw/ (compile-raw turns it into wiki notes)."""
+    try:
+        path = clip.clip(memory, c.url, clock.now(), c.note)
+    except clip.ClipError as e:
+        raise HTTPException(422, str(e)) from e
+    return {"file": path.relative_to(memory).as_posix()}
 
 
 def run() -> None:

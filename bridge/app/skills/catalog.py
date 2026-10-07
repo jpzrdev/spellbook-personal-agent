@@ -1,6 +1,6 @@
 """Catalog of Gandalf's skills (skills/<name>/SKILL.md at the repository root).
 
-Skills belong to the project, not to the vault: the native ones (the ones the Bridge and the HUD call by name)
+Skills belong to the project, not to the memory: the native ones (the ones the Bridge and the HUD call by name)
 are versioned, and the ones the user or Gandalf create live next to them, outside git (see skills/.gitignore).
 
 Tier 3 loads them as a Claude Code plugin, so Claude Code sees every skill and picks the one that fits by itself
@@ -23,6 +23,9 @@ import frontmatter
 from app.config import get_settings
 
 OUTPUTS = ("ephemeral", "research", "library")
+# `context:` in SKILL.md: data the Bridge computes and appends to the request (memory-health: the wiki's
+# mechanical health check, for lint-wiki).
+CONTEXTS = ("memory-health",)
 PLUGIN_NAME = "gandalf"  # the prefix of the skills in Claude Code: /gandalf:<name>
 _plugin_lock = threading.Lock()
 KEEP_OLD_VERSIONS_S = 24 * 3600  # a running session may still read an older copy (skills load when used)
@@ -36,9 +39,10 @@ class Skill:
     # Extra tools allowed when Tier 3 runs this skill (e.g. MCP: mcp__google_calendar).
     tools: list[str] = field(default_factory=list)
     # `output:` in SKILL.md sets the session mode wherever the skill runs from: ephemeral (read-only,
-    # result in the HUD), research (web only, no vault) or library (writes only in wiki/library/).
-    output: str = "vault"
+    # result in the HUD), research (web only, no memory) or library (writes only in wiki/library/).
+    output: str = "memory"
     title: str | None = None  # card title in "Today's summaries"
+    context: str | None = None
 
     @property
     def command(self) -> str:
@@ -83,8 +87,9 @@ def list_skills() -> list[Skill]:
                 description=str(meta.get("description") or "").strip(),
                 folder=path.parent.name,
                 tools=_tools(meta.get("allowed-tools")),
-                output=meta["output"] if meta.get("output") in OUTPUTS else "vault",
+                output=meta["output"] if meta.get("output") in OUTPUTS else "memory",
                 title=str(meta["title"]).strip() if meta.get("title") else None,
+                context=meta["context"] if meta.get("context") in CONTEXTS else None,
             )
         )
     return skills

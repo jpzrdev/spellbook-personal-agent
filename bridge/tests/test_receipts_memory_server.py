@@ -26,31 +26,31 @@ def test_receipts_costs_and_reading(client):
     assert c["by_day"][-1]["day"] == "2026-10-03"
 
 
-def test_vault_tree_and_note(client):
-    tree = client.get("/vault/tree").json()
+def test_memory_tree_and_note(client):
+    tree = client.get("/memory/tree").json()
     names = [n["name"] for n in tree]
     assert names[:3] == ["life", "output", "raw"]
     assert ".git" not in names
     life = next(n for n in tree if n["name"] == "life")
     assert any(f["path"] == "life/tasks.md" for f in life["children"])
 
-    note = client.get("/vault/note", params={"path": "life/agenda/2026-10-03.md"}).json()
+    note = client.get("/memory/note", params={"path": "life/agenda/2026-10-03.md"}).json()
     assert note["metadata"]["date"] == "2026-10-03" and "Dentist" in note["text"]
 
 
-def test_vault_does_not_leave_the_folder(client):
+def test_memory_does_not_leave_the_folder(client):
     for path in ("../.env", "life/../../secret.md", ".git/config", "/etc/passwd"):
-        r = client.get("/vault/note", params={"path": path})
+        r = client.get("/memory/note", params={"path": path})
         assert r.status_code in (400, 404), path
-    assert client.get("/vault/note", params={"path": "does/not/exist.md"}).status_code == 404
+    assert client.get("/memory/note", params={"path": "does/not/exist.md"}).status_code == 404
 
 
-def test_single_server_serves_hud_and_api(monkeypatch, vault, tmp_path):
+def test_single_server_serves_hud_and_api(monkeypatch, memory, tmp_path):
     from app import config
     from app.server import create
 
     monkeypatch.setenv("BRIDGE_TOKEN", TOKEN)
-    monkeypatch.setenv("VAULT_PATH", str(vault))
+    monkeypatch.setenv("MEMORY_PATH", str(memory))
     config.get_settings.cache_clear()
     dist = tmp_path / "dist"
     (dist / "assets").mkdir(parents=True)

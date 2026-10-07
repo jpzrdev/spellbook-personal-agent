@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest'
 import { wikilinks } from './markdown'
 
 describe('wikilinks', () => {
-  it('turns Obsidian links into links to the Vault screen', () => {
-    expect(wikilinks('see [[wiki/studies/limits]]')).toBe('see [limits](/vault?note=wiki%2Fstudies%2Flimits.md)')
-    expect(wikilinks('[[raw/idea.md|the idea]]')).toBe('[the idea](/vault?note=raw%2Fidea.md)')
+  it('turns wiki links into links to the Memory screen', () => {
+    expect(wikilinks('see [[wiki/studies/limits]]')).toBe('see [limits](/memory?note=wiki%2Fstudies%2Flimits.md)')
+    expect(wikilinks('[[raw/idea.md|the idea]]')).toBe('[the idea](/memory?note=raw%2Fidea.md)')
     expect(wikilinks('no links')).toBe('no links')
   })
 })
 
-describe('Obsidian callouts', () => {
+describe('callouts', () => {
   it('become collapsed details', async () => {
     const { render } = await import('@testing-library/react')
     const { createElement } = await import('react')

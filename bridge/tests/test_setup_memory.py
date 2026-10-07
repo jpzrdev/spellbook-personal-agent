@@ -1,7 +1,7 @@
 import re
 
 from app.config import REPO_ROOT
-from app.setup_vault import TEMPLATE, copy_template
+from app.setup_memory import TEMPLATE, copy_template
 
 
 def test_copy_does_not_overwrite(tmp_path):
@@ -10,7 +10,7 @@ def test_copy_does_not_overwrite(tmp_path):
     (template / "CLAUDE.md").write_text("template", encoding="utf-8")
     (template / "raw" / ".gitkeep").write_text("", encoding="utf-8")
 
-    target = tmp_path / "vault"
+    target = tmp_path / "memory"
     target.mkdir()
     (target / "CLAUDE.md").write_text("mine", encoding="utf-8")
 
@@ -23,7 +23,7 @@ def test_copy_does_not_overwrite(tmp_path):
 
 
 def test_the_project_ships_the_skills_the_bridge_calls():
-    """The Bridge calls these skills by name: they live in skills/ (versioned), not in the vault template."""
+    """The Bridge calls these skills by name: they live in skills/ (versioned), not in the memory template."""
     skills = REPO_ROOT / "skills"
     called = {"schedule-event", "research", "save-research", "structure-material", "prepare-studies"}
     # native = what skills/.gitignore keeps in git (the user's own skills stay out)

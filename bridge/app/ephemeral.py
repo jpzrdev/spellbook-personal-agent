@@ -1,7 +1,7 @@
-"""Ephemeral outputs: passing results (e.g. an email summary) that do NOT go to the vault.
+"""Ephemeral outputs: passing results (e.g. an email summary) that do NOT go to the memory.
 
-They live in `bridge/data/ephemeral/<id>.json` (outside the vault and git) and expire after
-`GANDALF_EPHEMERAL_HOURS`. The user can deliberately save an item to the vault (raw/ or a task).
+They live in `bridge/data/ephemeral/<id>.json` (outside the memory and git) and expire after
+`GANDALF_EPHEMERAL_HOURS`. The user can deliberately save an item to the memory (raw/ or a task).
 """
 
 import json
@@ -28,7 +28,7 @@ class Ephemeral:
     routine: str | None = None
     session_id: str | None = None
     key: str | None = None  # source skill/routine: a new summary replaces the previous one with the same key
-    # Web research result: {topic, kind, request, slug} for the "Save to vault" button to organize.
+    # Web research result: {topic, kind, request, slug} for the "Save to memory" button to organize.
     research: dict | None = None
 
 

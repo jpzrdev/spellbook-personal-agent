@@ -10,7 +10,7 @@ Reference date: today, in the user's time zone.
 ## Steps
 
 1. Read today's `life/agenda/YYYY-MM-DD.md` (it may not exist: a day without appointments).
-2. Read `life/tasks.md` (Tasks plugin format: `📅` date, `⏫🔼🔽` priority). Choose **3 priorities**: first the overdue ones and today's, then the high-priority ones.
+2. Read `life/tasks.md` (tasks format: `📅` date, `⏫🔼🔽` priority). Choose **3 priorities**: first the overdue ones and today's, then the high-priority ones.
 3. If `life/journal/YYYY-MM-DD.md` already exists, **update only the day plan section** and keep the rest (the user may have written in it).
 4. Otherwise, create the file (headings and text in the user's language):
 

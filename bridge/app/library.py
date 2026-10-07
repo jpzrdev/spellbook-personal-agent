@@ -1,7 +1,7 @@
 """Library: research and plans saved in wiki/library/<topic>/ (an `_index.md` + one note per part).
 
-Flow: Gandalf researches on the web (web-only session, no vault) → the result shows up in the HUD → if
-the user taps "Save to vault", another session (no web, writes only in wiki/library/) organizes it by topic.
+Flow: Gandalf researches on the web (web-only session, no memory) → the result shows up in the HUD → if
+the user taps "Save to memory", another session (no web, writes only in wiki/library/) organizes it by topic.
 """
 
 import re
@@ -10,7 +10,7 @@ from pathlib import Path
 
 import frontmatter
 
-from app.vault import reader, writer
+from app.memory import reader, writer
 
 LIBRARY = Path("wiki/library")
 
@@ -34,16 +34,16 @@ def _summary(content: str) -> str:
     return ""
 
 
-def topic_folder(vault: Path, slug: str) -> Path:
+def topic_folder(memory: Path, slug: str) -> Path:
     if not re.fullmatch(r"[\w-]+", slug):
         raise InvalidTopic(slug)
-    folder = vault / LIBRARY / slug
+    folder = memory / LIBRARY / slug
     if not folder.is_dir():
         raise FileNotFoundError(slug)
     return folder
 
 
-def _parts(vault: Path, folder: Path) -> list[dict]:
+def _parts(memory: Path, folder: Path) -> list[dict]:
     parts = []
     for path in sorted(folder.glob("*.md")):
         if path.name.startswith("_"):
@@ -52,7 +52,7 @@ def _parts(vault: Path, folder: Path) -> list[dict]:
             post = frontmatter.load(path)
             order = post.metadata.get("order")
             parts.append({
-                "note": path.relative_to(vault).as_posix(),
+                "note": path.relative_to(memory).as_posix(),
                 "title": _title(post.content, path.stem),
                 "order": int(order) if isinstance(order, int) or str(order).isdigit() else None,
             })
@@ -61,7 +61,7 @@ def _parts(vault: Path, folder: Path) -> list[dict]:
     return sorted(parts, key=lambda p: (p["order"] is None, p["order"] or 0, p["title"]))
 
 
-def _card(vault: Path, folder: Path) -> dict:
+def _card(memory: Path, folder: Path) -> dict:
     index = folder / "_index.md"
     meta, content = {}, ""
     if index.is_file():
@@ -81,28 +81,28 @@ def _card(vault: Path, folder: Path) -> dict:
     }
 
 
-def list_topics(vault: Path) -> list[dict]:
-    root = vault / LIBRARY
+def list_topics(memory: Path) -> list[dict]:
+    root = memory / LIBRARY
     if not root.is_dir():
         return []
-    items = [_card(vault, p) for p in root.iterdir() if p.is_dir() and not p.name.startswith((".", "_"))]
+    items = [_card(memory, p) for p in root.iterdir() if p.is_dir() and not p.name.startswith((".", "_"))]
     return sorted(items, key=lambda i: i["updated"] or "", reverse=True)
 
 
-def detail(vault: Path, slug: str) -> dict:
-    folder = topic_folder(vault, slug)
+def detail(memory: Path, slug: str) -> dict:
+    folder = topic_folder(memory, slug)
     index = folder / "_index.md"
     return {
-        **_card(vault, folder),
-        "index": index.relative_to(vault).as_posix() if index.is_file() else None,
-        "parts": _parts(vault, folder),
+        **_card(memory, folder),
+        "index": index.relative_to(memory).as_posix() if index.is_file() else None,
+        "parts": _parts(memory, folder),
         "has_checklist": (folder / "checklist.md").is_file(),
     }
 
 
-def context_for_update(vault: Path, slug: str, limit: int = 6000) -> str:
-    """What is already saved about the topic (goes into the update research request, which can't read the vault)."""
-    folder = topic_folder(vault, slug)
+def context_for_update(memory: Path, slug: str, limit: int = 6000) -> str:
+    """What is already saved about the topic (goes into the update research request, which can't read the memory)."""
+    folder = topic_folder(memory, slug)
     parts = []
     for path in [folder / "_index.md", *sorted(a for a in folder.glob("*.md") if not a.name.startswith("_"))]:
         if path.is_file():
@@ -111,13 +111,13 @@ def context_for_update(vault: Path, slug: str, limit: int = 6000) -> str:
     return text if len(text) <= limit else text[:limit] + "\n…(truncated)"
 
 
-def checklist_to_tasks(vault: Path, slug: str, today: date) -> list[str]:
+def checklist_to_tasks(memory: Path, slug: str, today: date) -> list[str]:
     """Open items of the topic's checklist.md become tasks (#library/<topic>), skipping existing ones."""
-    folder = topic_folder(vault, slug)
+    folder = topic_folder(memory, slug)
     path = folder / "checklist.md"
     if not path.is_file():
         raise FileNotFoundError("checklist.md")
-    existing = {t.text.strip().lower() for t in reader.read_tasks(vault)}
+    existing = {t.text.strip().lower() for t in reader.read_tasks(memory)}
     created = []
     for line in frontmatter.load(path).content.splitlines():
         m = re.match(r"^\s*[-*] \[ \] (.+)$", line)
@@ -125,7 +125,7 @@ def checklist_to_tasks(vault: Path, slug: str, today: date) -> list[str]:
             continue
         text = re.sub(r"\s*[📅⏫🔼🔽⏬🔺]\s*\S*", "", m.group(1)).strip()
         if text and text.lower() not in existing:
-            writer.add_task(vault, text[:300], tags=[f"library/{slug}"])
+            writer.add_task(memory, text[:300], tags=[f"library/{slug}"])
             existing.add(text.lower())
             created.append(text)
     return created

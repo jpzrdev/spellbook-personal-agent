@@ -46,9 +46,9 @@ def test_listen_and_speak(client, monkeypatch):
     assert client.post("/voice/listen", files={"audio": ("empty.webm", b"", "audio/webm")}).status_code == 422
 
 
-def test_a_voice_question_keeps_the_voice_source(client, vault):
+def test_a_voice_question_keeps_the_voice_source(client, memory):
     import frontmatter
 
     client.post("/ask", json={"text": "what do I have today?", "source": "voice"})
-    [rec] = list((vault / "receipts").rglob("*.md"))
+    [rec] = list((memory / "receipts").rglob("*.md"))
     assert frontmatter.load(rec)["source"] == "voice"

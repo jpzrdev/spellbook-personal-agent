@@ -7,8 +7,8 @@ import yaml
 
 from app import clock, cron
 from app.routines.actions import ACTIONS
-from app.vault.reader import ROUTINES, read_text
-from app.vault.writer import slugify, write_atomic
+from app.memory.reader import ROUTINES, read_text
+from app.memory.writer import slugify, write_atomic
 
 
 class InvalidRoutine(ValueError):
@@ -33,10 +33,10 @@ class _Quoted(str):
 yaml.SafeDumper.add_representer(_Quoted, lambda d, v: d.represent_scalar("tag:yaml.org,2002:str", v, style='"'))
 
 
-def path_for(vault: Path, slug: str) -> Path:
+def path_for(memory: Path, slug: str) -> Path:
     if slugify(slug) != slug:
         raise RoutineNotFound(slug)
-    return vault / ROUTINES / f"{slug}.md"
+    return memory / ROUTINES / f"{slug}.md"
 
 
 def validate(meta: dict, tz) -> None:
@@ -44,8 +44,8 @@ def validate(meta: dict, tz) -> None:
         cron.create_trigger(str(meta.get("cron", "")), tz)
     except (ValueError, TypeError) as e:
         raise InvalidRoutine(f"invalid schedule (cron): {meta.get('cron')!r}") from e
-    if meta.get("output") not in (None, "vault", "ephemeral"):
-        raise InvalidRoutine("output must be 'vault' or 'ephemeral'")
+    if meta.get("output") not in (None, "memory", "ephemeral"):
+        raise InvalidRoutine("output must be 'memory' or 'ephemeral'")
     tier = meta.get("tier")
     if tier == 1:
         if meta.get("action") not in ACTIONS:
@@ -66,15 +66,15 @@ def _write(path: Path, meta: dict, description: str) -> None:
     write_atomic(path, f"---\n{header}---\n{description.strip()}\n")
 
 
-def create(vault: Path, tz, *, name: str, cron_expr: str, tier: int, active: bool,
-           skill: str | None, action: str | None, description: str, output: str = "vault", notify: bool = False) -> str:
+def create(memory: Path, tz, *, name: str, cron_expr: str, tier: int, active: bool,
+           skill: str | None, action: str | None, description: str, output: str = "memory", notify: bool = False) -> str:
     slug = slugify(name)
-    path = path_for(vault, slug)
+    path = path_for(memory, slug)
     if path.exists():
         raise RoutineExists(slug)
     meta = {"type": "routine", "name": name.strip(), "cron": cron_expr.strip(), "active": active, "tier": tier,
             "skill": skill or None, "action": action or None,
-            # "vault" is the default: the field is only written when the output is ephemeral.
+            # "memory" is the default: the field is only written when the output is ephemeral.
             "output": "ephemeral" if output == "ephemeral" else None,
             "notify": True if notify else None,
             # Creation date: late routines don't recover times before it.
@@ -84,9 +84,9 @@ def create(vault: Path, tz, *, name: str, cron_expr: str, tier: int, active: boo
     return slug
 
 
-def update(vault: Path, tz, slug: str, changes: dict, description: str | None = None) -> None:
+def update(memory: Path, tz, slug: str, changes: dict, description: str | None = None) -> None:
     """Changes only the given fields; keeps unknown fields and the note body."""
-    path = path_for(vault, slug)
+    path = path_for(memory, slug)
     if not path.is_file():
         raise RoutineNotFound(slug)
     post = frontmatter.loads(read_text(path))
@@ -94,15 +94,15 @@ def update(vault: Path, tz, slug: str, changes: dict, description: str | None = 
     for key, value in changes.items():
         if key == "cron_expr":
             key = "cron"
-        if (key == "output" and value == "vault") or (key == "notify" and not value):
+        if (key == "output" and value == "memory") or (key == "notify" and not value):
             value = None  # defaults are not written
         meta[key] = value if value != "" else None
     validate(meta, tz)
     _write(path, meta, description if description is not None else post.content)
 
 
-def remove(vault: Path, slug: str) -> None:
-    path = path_for(vault, slug)
+def remove(memory: Path, slug: str) -> None:
+    path = path_for(memory, slug)
     if not path.is_file():
         raise RoutineNotFound(slug)
     path.unlink()

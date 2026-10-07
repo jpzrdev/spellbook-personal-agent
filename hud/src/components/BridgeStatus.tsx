@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api, type Health } from '../lib/api'
 import { cn } from '../lib/cn'
 
-/** A status dot in the header: Bridge + vault + Claude Code (green = all set). */
+/** A status dot in the header: Bridge + memory + Claude Code (green = all set). */
 export function BridgeStatus() {
   const { data, error, isPending } = useQuery({
     queryKey: ['health'],
@@ -14,8 +14,8 @@ export function BridgeStatus() {
     ? ['bg-gold', 'connecting to the Bridge…']
     : error
       ? ['bg-ember', `no connection to the Bridge: ${error.message}`]
-      : !data?.vault_exists
-        ? ['bg-gold', 'Bridge connected, but the vault was not found']
+      : !data?.memory_exists
+        ? ['bg-gold', 'Bridge connected, but the memory was not found']
         : !data.claude?.installed
           ? ['bg-gold', 'Bridge ok, but Claude Code is not installed (tiers 2 and 3 unavailable)']
           : !data.claude.logged_in

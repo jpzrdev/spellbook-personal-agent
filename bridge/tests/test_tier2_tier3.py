@@ -17,8 +17,8 @@ def wait_for_end(client, session_id: str, timeout: float = 15) -> dict:
     raise AssertionError(f"session {session_id} did not finish")
 
 
-def receipts(vault: Path) -> list[frontmatter.Post]:
-    return [frontmatter.load(p) for p in sorted((vault / "receipts").rglob("*.md"))]
+def receipts(memory: Path) -> list[frontmatter.Post]:
+    return [frontmatter.load(p) for p in sorted((memory / "receipts").rglob("*.md"))]
 
 
 def test_tier1_still_goes_first(client):
@@ -26,11 +26,11 @@ def test_tier1_still_goes_first(client):
     assert r["tier"] == 1
 
 
-def test_tier2_answers_and_writes_a_receipt_with_tokens(client, vault):
+def test_tier2_answers_and_writes_a_receipt_with_tokens(client, memory):
     r = client.post("/ask", json={"text": "what is a derivative?"}).json()
     assert r["tier"] == 2 and r["intent"] == "answer"
     assert "rate of change" in r["reply"]
-    [rec] = receipts(vault)
+    [rec] = receipts(memory)
     assert rec["tier"] == 2 and rec["model"] == "claude-haiku-4-5"
     assert rec["input_tokens"] == 150 and rec["output_tokens"] == 20
     assert rec["estimated_cost_usd"] == pytest.approx(0.0011)
@@ -42,23 +42,23 @@ def test_tier2_system_prompt_carries_the_language(client, pt_br):
     assert "The user speaks Brazilian Portuguese (pt-BR)" in tier2.system_prompt()
 
 
-def test_tier2_invalid_json_retries_and_uses_the_text(client, vault):
+def test_tier2_invalid_json_retries_and_uses_the_text(client, memory):
     r = client.post("/ask", json={"text": "INVALID please"}).json()
     assert r["tier"] == 2 and r["reply"] == "Hello! I don't speak JSON."
-    [rec] = receipts(vault)
+    [rec] = receipts(memory)
     assert rec["input_tokens"] == 300  # both attempts added up
 
 
-def test_escalates_to_tier3_with_stream_file_and_receipt(client, vault):
+def test_escalates_to_tier3_with_stream_file_and_receipt(client, memory):
     r = client.post("/ask", json={"text": "ESCALATE: organize my raw"}).json()
     assert r["tier"] == 3 and r["session_id"]
     s = wait_for_end(client, r["session_id"])
     assert s["status"] == "ok"
     assert s["files"] == ["output/test-report.md"]
-    assert (vault / "output" / "test-report.md").read_text(encoding="utf-8").startswith("# Report")
+    assert (memory / "output" / "test-report.md").read_text(encoding="utf-8").startswith("# Report")
     assert s["claude_session_id"] and s["model"] == "claude-sonnet-5-5"
 
-    [rec] = receipts(vault)  # a single receipt per request
+    [rec] = receipts(memory)  # a single receipt per request
     assert rec["tier"] == 3 and rec["claude_code_session"] == s["claude_session_id"]
     assert rec["input_tokens"] == 300  # Tier 2 (150) + Tier 3 (150)
     assert "## Request\nESCALATE: organize my raw" in rec.content
@@ -89,13 +89,13 @@ def test_ws_requires_token(client):
     wait_for_end(client, sid)
 
 
-def test_cancel_session(client, vault):
+def test_cancel_session(client, memory):
     sid = client.post("/ask", json={"text": "SLOW for a while", "force_tier": 3}).json()["session_id"]
     time.sleep(0.8)
     assert client.delete(f"/sessions/{sid}").json()["id"] == sid
     s = wait_for_end(client, sid)
     assert s["status"] == "cancelled"
-    assert receipts(vault)[0]["tier"] == 3
+    assert receipts(memory)[0]["tier"] == 3
 
 
 def test_queue_respects_the_limit(client, monkeypatch):
@@ -125,7 +125,7 @@ def test_continue_resumes_the_claude_session(client):
     assert s2["claude_session_id"] == s1["claude_session_id"]  # passed --resume
 
 
-def test_daily_limit_asks_for_confirmation(client, monkeypatch, vault):
+def test_daily_limit_asks_for_confirmation(client, monkeypatch, memory):
     from app import config
 
     monkeypatch.setenv("GANDALF_DAILY_CALL_LIMIT", "1")

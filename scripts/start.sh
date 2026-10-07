@@ -9,7 +9,7 @@ if [ ! -f "$root/.env" ]; then
   echo ".env created from .env.example (token generated)."
 fi
 
-(cd "$root/bridge" && uv run python -m app.setup_vault)
+(cd "$root/bridge" && uv run python -m app.setup_memory)
 [ -d "$root/hud/node_modules" ] || (cd "$root/hud" && npm install)
 
 (cd "$root/bridge" && uv run python -m app.main) &

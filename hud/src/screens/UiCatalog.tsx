@@ -144,7 +144,7 @@ function BentoExample() {
           <div className="flex flex-col gap-3">
             <Checkbox label="Calculus problem set 3" strikethrough />
             <Checkbox label="Pay the electricity bill" strikethrough />
-            <Checkbox label="Fill in the profile in the vault" strikethrough defaultChecked />
+            <Checkbox label="Fill in the profile in the memory" strikethrough defaultChecked />
           </div>
         </Card>
       </BentoItem>
@@ -345,7 +345,7 @@ export function UiCatalog() {
           <Input label="With an error" defaultValue="02/31" error="Invalid date" />
           <Input label="Disabled" placeholder="…" disabled />
         </div>
-        <SearchInput label="Search the vault" placeholder="Search the vault…" className="max-w-md" />
+        <SearchInput label="Search the memory" placeholder="Search the memory…" className="max-w-md" />
       </Section>
 
       <Section title="Dropdown / Menu">
@@ -392,7 +392,7 @@ export function UiCatalog() {
           <ToastView kind="info">New note in wiki/</ToastView>
         </Row>
         <Row label="trigger">
-          <Button onClick={() => toast('success', 'Saved to the vault!')}>Success</Button>
+          <Button onClick={() => toast('success', 'Saved to the memory!')}>Success</Button>
           <Button variant="secondary" onClick={() => toast('error', 'The Bridge is down')}>
             Error
           </Button>

@@ -10,7 +10,7 @@ export function Chat() {
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-4xl font-semibold tracking-tight">Chat</h1>
-          <p className="mt-1 text-ink-muted">Talk to Gandalf. Every request writes a receipt in the vault.</p>
+          <p className="mt-1 text-ink-muted">Talk to Gandalf. Every request writes a receipt in the memory.</p>
         </div>
         <Button variant="ghost" size="sm" onClick={() => chat.clear()}>
           <Eraser className="size-4" aria-hidden /> Clear conversation
@@ -20,7 +20,7 @@ export function Chat() {
         <Card className="items-center lg:sticky lg:top-6">
           <Mascot />
         </Card>
-        <Card title="Gandalf" subtitle="T1 rules · T2 fast Claude Code · T3 Claude Code in the vault" icon={<Sparkles />} color="primary">
+        <Card title="Gandalf" subtitle="T1 rules · T2 fast Claude Code · T3 Claude Code in the memory" icon={<Sparkles />} color="primary">
           <ChatThread height="max-h-[calc(100dvh-22rem)] min-h-64" />
         </Card>
       </div>

@@ -189,11 +189,11 @@ MESSAGES = {
     ),
     "router.limit": "Você já usou {used} chamadas de IA hoje (limite {limit}). Confirme para continuar.",
     "router.tier3": "Abri uma sessão do Claude Code para isso.",
-    "router.escalated": "Isso precisa de trabalho no vault; abri uma sessão do Claude Code.",
-    "router.research": "Vou pesquisar na web: **{topic}**. Quando terminar, o resultado aparece aqui e você decide se guarda no vault.",
+    "router.escalated": "Isso precisa de trabalho no memory; abri uma sessão do Claude Code.",
+    "router.research": "Vou pesquisar na web: **{topic}**. Quando terminar, o resultado aparece aqui e você decide se guarda no memory.",
     "tier2.no_answer": "Não consegui formular uma resposta agora.",
     "speech.details_on_screen": "Os detalhes estão na tela.",
-    # Written into vault files created by the code.
+    # Written into memory files created by the code.
     "file.tasks_header": "# Tarefas\n",
     "file.reminders_header": (
         "# Lembretes\n\n"

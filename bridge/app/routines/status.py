@@ -7,21 +7,21 @@ from zoneinfo import ZoneInfo
 from app import cron
 from app.gandalf import tier3
 from app.receipts_index import read_receipts
-from app.vault.reader import read_routines
+from app.memory.reader import read_routines
 
 # A run counts for a scheduled time if it started up to 2 min before it (clocks, delays).
 TOLERANCE = timedelta(minutes=2)
 
 
-def runs(vault: Path, start: datetime, end: datetime) -> dict[str, list[dict]]:
+def runs(memory: Path, start: datetime, end: datetime) -> dict[str, list[dict]]:
     """Per slug: runs (receipts with `routine` + still-active sessions), oldest to newest."""
     by_slug: dict[str, list[dict]] = {}
-    for r in read_receipts(vault, start.date(), end.date()):
+    for r in read_receipts(memory, start.date(), end.date()):
         if r["routine"] and r["at"] and start <= r["at"] <= end:
             by_slug.setdefault(r["routine"], []).append(
                 {"at": r["at"], "status": r["status"], "receipt_id": r["id"], "tier": r["tier"]}
             )
-    for s in tier3.manager(vault).sessions():
+    for s in tier3.manager(memory).sessions():
         if s.routine and s.status in tier3.ACTIVE:
             by_slug.setdefault(s.routine, []).append(
                 {"at": s.created, "status": s.status, "session_id": s.id}
@@ -31,12 +31,12 @@ def runs(vault: Path, start: datetime, end: datetime) -> dict[str, list[dict]]:
     return by_slug
 
 
-def routines_today(vault: Path, now: datetime, tz: ZoneInfo) -> list[dict]:
+def routines_today(memory: Path, now: datetime, tz: ZoneInfo) -> list[dict]:
     """Today's fire times of the active routines with a status: pending | missed | queued | running | ok | error…"""
     day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    done = runs(vault, day_start, now + timedelta(days=1))
+    done = runs(memory, day_start, now + timedelta(days=1))
     items: list[dict] = []
-    for r in read_routines(vault):
+    for r in read_routines(memory):
         if not r.active:
             continue
         try:
@@ -56,5 +56,5 @@ def routines_today(vault: Path, now: datetime, tz: ZoneInfo) -> list[dict]:
     return sorted(items, key=lambda i: i["time"])
 
 
-def history(vault: Path, now: datetime, days: int = 30) -> dict[str, list[dict]]:
-    return runs(vault, now - timedelta(days=days), now + timedelta(minutes=1))
+def history(memory: Path, now: datetime, days: int = 30) -> dict[str, list[dict]]:
+    return runs(memory, now - timedelta(days=days), now + timedelta(minutes=1))

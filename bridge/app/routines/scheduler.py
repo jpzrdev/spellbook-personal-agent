@@ -1,5 +1,5 @@
 """Routine scheduler: reads life/routines/*.md, registers the active crons and reloads when
-the folder changes (from the HUD, from Obsidian or by hand). Uses the configured time zone."""
+the folder changes (from the HUD or by hand). Uses the configured time zone."""
 
 import logging
 import threading
@@ -18,7 +18,7 @@ from app.events import system_events
 from app.gandalf import tier3
 from app.receipts import Receipt, write_receipt
 from app.routines.actions import ACTIONS, ActionFailed
-from app.vault.reader import ROUTINES, Routine, read_routines
+from app.memory.reader import ROUTINES, Routine, read_routines
 
 log = logging.getLogger("gandalf.routines")
 
@@ -43,8 +43,8 @@ class _Watcher(FileSystemEventHandler):
 
 
 class Scheduler:
-    def __init__(self, vault: Path, tz: ZoneInfo):
-        self.vault = vault
+    def __init__(self, memory: Path, tz: ZoneInfo):
+        self.memory = memory
         self.tz = tz
         self._scheduler = BackgroundScheduler(
             timezone=tz,
@@ -59,7 +59,7 @@ class Scheduler:
     def start(self) -> None:
         self.reload()
         self._scheduler.start()
-        folder = self.vault / ROUTINES
+        folder = self.memory / ROUTINES
         folder.mkdir(parents=True, exist_ok=True)
         self._observer = Observer()
         self._observer.schedule(_Watcher(self.reload), str(folder), recursive=False)
@@ -79,7 +79,7 @@ class Scheduler:
     def reload(self) -> None:
         with self._lock:
             self._scheduler.remove_all_jobs()
-            for r in read_routines(self.vault):
+            for r in read_routines(self.memory):
                 if not r.active:
                     continue
                 try:
@@ -96,7 +96,7 @@ class Scheduler:
 
     def _created_at(self, routine: Routine) -> datetime:
         """When the routine came to exist: the `created` field (written by the HUD) or the file date."""
-        path = self.vault / ROUTINES / f"{routine.slug}.md"
+        path = self.memory / ROUTINES / f"{routine.slug}.md"
         try:
             created = frontmatter.load(path).get("created")
             if created:
@@ -118,7 +118,7 @@ class Scheduler:
         from app.routines.status import TOLERANCE, runs
 
         pending: list[tuple[Routine, datetime]] = []
-        for r in read_routines(self.vault):
+        for r in read_routines(self.memory):
             if not r.active:
                 continue
             try:
@@ -127,7 +127,7 @@ class Scheduler:
                 continue
             if last is None or last < self._created_at(r):
                 continue
-            if not runs(self.vault, last - TOLERANCE, now).get(r.slug):
+            if not runs(self.memory, last - TOLERANCE, now).get(r.slug):
                 pending.append((r, last))
         return pending
 
@@ -155,7 +155,7 @@ class Scheduler:
 
     def run(self, slug: str, manual: bool = False, late_since: datetime | None = None) -> dict:
         """Runs the routine now. Tier 1: internal action (receipt right away). Tier 3: opens a session."""
-        routine = next((r for r in read_routines(self.vault) if r.slug == slug), None)
+        routine = next((r for r in read_routines(self.memory) if r.slug == slug), None)
         if routine is None:
             raise KeyError(slug)
         now = clock.now()
@@ -173,7 +173,7 @@ class Scheduler:
             try:
                 if not action:
                     raise ActionFailed(f"unknown action: {routine.action!r}")
-                response = action[1](self.vault, now)
+                response = action[1](self.memory, now)
             except Exception as e:  # record the failure in the receipt instead of bringing the scheduler down
                 status = "error"
                 response = f"Failed: {e}"
@@ -188,10 +188,10 @@ class Scheduler:
             elif status == "error":
                 push.send_in_background(push.Notification(f"⚠️ {routine.name}: something went wrong", response[:120], "/routines"))
             rid, _ = write_receipt(
-                self.vault,
+                self.memory,
                 Receipt(
                     request=request,
-                    response="(ephemeral output: shown in the HUD and not stored in the vault)" if ephemeral_id else response,
+                    response="(ephemeral output: shown in the HUD and not stored in the memory)" if ephemeral_id else response,
                     source="routine",
                     tier=1,
                     at=now,
@@ -205,7 +205,7 @@ class Scheduler:
             return {"slug": slug, "tier": 1, "status": status, "receipt_id": rid, "response": response, "ephemeral_id": ephemeral_id}
 
         task = routine.description or routine.name
-        s = tier3.manager(self.vault).create(
+        s = tier3.manager(self.memory).create(
             task,
             request=request,
             source="routine",
@@ -221,12 +221,12 @@ _scheduler: Scheduler | None = None
 _global_lock = threading.Lock()
 
 
-def scheduler(vault: Path) -> Scheduler:
-    """The vault's scheduler (created without starting; the app lifespan calls `start`)."""
+def scheduler(memory: Path) -> Scheduler:
+    """The memory's scheduler (created without starting; the app lifespan calls `start`)."""
     global _scheduler
     with _global_lock:
-        if _scheduler is None or _scheduler.vault != vault:
-            _scheduler = Scheduler(vault, clock.tz())
+        if _scheduler is None or _scheduler.memory != memory:
+            _scheduler = Scheduler(memory, clock.tz())
         return _scheduler
 
 
