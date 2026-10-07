@@ -25,6 +25,7 @@ Read `wiki/_master-index.md`, the `_index.md` files and the notes changed recent
 - **Stale claims**: facts that depend on time (prices, versions, rules, "currently…") older than ~6 months. Report them; don't search the web.
 - **Duplicates**: two notes on the same concept. Merge into one, keep the other as a short note pointing to it (so links don't break), and update the indexes.
 - **Missing connections**: notes that should link to each other and don't. Add the links.
+- **`wiki/about-me/learned.md`** (facts picked up in conversation, newest last): if it has more than ~15 lines, fold the stable ones into `profile.md` or the topic's note and remove them from learned.md; drop duplicates and lines a newer line contradicts (the newer one wins). Keep it short: Gandalf reads it on every request.
 - **Gaps**: concepts mentioned in several notes without a note of their own, or questions the wiki can't answer yet. Suggest them (new note, something to research on the web, a source to add to `raw/`).
 
 Don't rewrite notes that are fine. Small, safe changes; anything big or doubtful goes to the report.

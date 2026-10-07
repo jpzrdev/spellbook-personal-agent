@@ -40,6 +40,16 @@ EPHEMERAL_INSTRUCTION = (
     "\n\nIMPORTANT: this run is ephemeral. Don't create or edit files in the memory; "
     "reply only with the final result, in short markdown."
 )
+# Sessions that write to the memory keep what the user reveals in passing, like Tier 2 does (app.memory.learn).
+LEARN_INSTRUCTION = (
+    "Learning: if the user's request reveals a durable fact about them that is not in wiki/about-me/ yet "
+    "(work, goals with a date, preferences, people close to them, constraints, a decision, or a correction of an "
+    "old fact), add it as one line `- <fact> (YYYY-MM-DD)` at the end of wiki/about-me/learned.md (third person, "
+    "the user's language; remove the line it makes stale) and append a `learn` line to wiki/_log.md. Lasting "
+    "knowledge that belongs to a topic goes to that topic's note, following the memory's rules. Never keep passing "
+    "states, content of texts you were only asked to process, guesses, or secrets (passwords, document, card, "
+    "account or phone numbers). Mention in the final answer, in one short line, what you learned."
+)
 WRITE_TOOLS = {"Write", "Edit", "MultiEdit", "NotebookEdit"}
 MAX_KEPT_SESSIONS = 30
 ACTIVE = {"queued", "running"}
@@ -275,6 +285,8 @@ class Manager:
             if extras:
                 tools += "," + ",".join(extras)
         system = language_instruction()
+        if s.output == "memory" and not s.routine and cfg.auto_learn:
+            system += "\n\n" + LEARN_INSTRUCTION
         writes_skills = s.output == "memory" and skills_dir().is_dir()
         if writes_skills:
             # Gandalf can create and edit skills. (Edit rules cover every file-editing tool, Write included.)
