@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Calendar, Check, CircleAlert, ExternalLink, KeyRound, Mail, RefreshCw, Shuffle, Sparkles, UserRound, Wand2 } from 'lucide-react'
+import { Calendar, Check, CircleAlert, ExternalLink, KeyRound, Mail, RefreshCw, Shuffle, Sparkles, UserRound, Wand2, X } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router'
 import { Logo } from '../components/Logo'
@@ -43,17 +43,24 @@ function SetupFlow({ status }: { status: SetupStatus }) {
     avatar: status.agent.avatar,
   })
   const [user, setUser] = useState<UserForm>(status.user)
+  const navigate = useNavigate()
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-3xl flex-col gap-8 px-4 pt-8 pb-16 sm:px-6">
       <header className="flex items-center gap-3">
         <Logo gender={agent.gender} avatar={agent.avatar} />
-        <div>
+        <div className="flex-1">
           <h1 className="font-display text-3xl font-semibold tracking-tight">{status?.done ? 'Settings' : 'Welcome'}</h1>
           <p className="text-sm text-ink-muted">
             {status?.done ? 'Change your assistant or what it knows about you.' : 'A few steps and your personal system is ready.'}
           </p>
         </div>
+        {/* Opened again from the menu: a way back without saving. */}
+        {status.done && (
+          <Button variant="icon" size="sm" aria-label="Close without saving" title="Close" onClick={() => (window.history.state?.idx > 0 ? navigate(-1) : navigate('/'))}>
+            <X className="size-4" aria-hidden />
+          </Button>
+        )}
       </header>
 
       <Stepper step={step} onGo={(i) => i < step && setStep(i)} />

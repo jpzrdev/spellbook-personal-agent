@@ -1,6 +1,5 @@
-import { Settings } from 'lucide-react'
 import { Suspense } from 'react'
-import { Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router'
+import { Navigate, NavLink, Outlet, useLocation } from 'react-router'
 import { cn } from '../lib/cn'
 import { useAgent, useSetup } from '../lib/queries'
 import { BridgeStatus } from './BridgeStatus'
@@ -10,12 +9,10 @@ import { Logo } from './Logo'
 import { BottomNav, TopNav } from './Navigation'
 import { SystemEvents } from './SystemEvents'
 import { ThemeSelector } from './ThemeSelector'
-import { Button } from './ui'
 import { focusRing } from './ui/styles'
 
 export function Layout() {
   const { pathname } = useLocation()
-  const navigate = useNavigate()
   const agent = useAgent()
   const { data: setup, isPending } = useSetup()
   // First run: the setup comes before everything. (Without the Bridge, the screens show it themselves.)
@@ -33,9 +30,6 @@ export function Layout() {
           <BridgeStatus />
           <TopNav />
           <ThemeSelector />
-          <Button variant="icon" size="sm" aria-label="Settings: your assistant and you" title="Settings" onClick={() => navigate('/setup')}>
-            <Settings className="size-4" aria-hidden />
-          </Button>
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-4 pt-8 pb-32 sm:px-6 lg:pb-12">
