@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import secrets
+import subprocess
 from contextlib import asynccontextmanager, contextmanager
 import threading
 import time
@@ -33,11 +34,11 @@ from pydantic import BaseModel, Field
 from starlette.requests import HTTPConnection
 from starlette.responses import FileResponse
 
-from app import clock, ephemeral, library, proposals, push
+from app import clock, ephemeral, library, persona, proposals, push
 from app import reminders as reminder_scheduler
 from app import studies
 from app import studies_quiz as quiz
-from app.config import get_settings
+from app.config import REPO_ROOT, get_settings
 from app.events import system_events
 from app.gandalf import claude_cli, tier3
 from app.gandalf import router as gandalf
@@ -47,6 +48,7 @@ from app.receipts_index import costs_by_day, read_receipts, to_json
 from app.routines import files as routine_files
 from app.routines import scheduler, status as routine_status
 from app.routines.actions import ACTIONS
+from app.setup_memory import TEMPLATE, copy_template
 from app.skills.catalog import has_skill, list_skills
 from app.speech import voice
 from app.memory import browse, clip, edit, links, reader, writer
@@ -134,6 +136,100 @@ def health(claude: bool = False) -> dict:
     if claude:
         data["claude"] = claude_status()
     return data
+
+
+# ---------- First-run setup: connect Claude, name and draw the assistant, introduce yourself ----------
+
+def _agent_json(agent: persona.Agent) -> dict:
+    return {**asdict(agent), "kind": agent.kind}
+
+
+def _setup_memory() -> Path:
+    """The setup creates the memory (from memory-template/) if it doesn't exist yet."""
+    memory = get_settings().memory_path
+    copy_template(TEMPLATE, memory)
+    return memory
+
+
+@app.get("/setup")
+def setup_status(refresh: bool = False) -> dict:
+    memory = get_settings().memory_path
+    agent = persona.load(memory)
+    return {
+        "done": agent.setup_done is not None,
+        "memory_exists": (memory / "CLAUDE.md").is_file(),
+        "claude": claude_status(force=refresh),
+        "agent": _agent_json(agent),
+        "user": persona.user(memory),
+    }
+
+
+@app.get("/setup/connectors")
+def setup_connectors() -> dict:
+    """Gmail and Google Calendar as Claude Code sees them (the claude.ai connectors the user turned on)."""
+    memory = get_settings().memory_path
+    try:
+        output = claude_cli.mcp_list(memory if memory.is_dir() else REPO_ROOT)
+    except claude_cli.ClaudeUnavailable as e:
+        raise HTTPException(503, str(e)) from e
+    except (subprocess.TimeoutExpired, OSError) as e:
+        raise HTTPException(502, f"`claude mcp list` failed: {e}") from e
+    servers = persona.parse_mcp_list(output)
+    return {"servers": servers, **persona.google_connectors(servers)}
+
+
+@app.post("/setup/claude-login")
+def setup_claude_login() -> dict:
+    """Opens the Claude Code sign-in in a terminal window on the PC running the Bridge."""
+    try:
+        opened = claude_cli.open_login()
+    except claude_cli.ClaudeUnavailable as e:
+        raise HTTPException(503, str(e)) from e
+    return {"opened": opened}
+
+
+class AgentIn(BaseModel):
+    name: str = Field(min_length=1, max_length=40)
+    gender: Literal["male", "female"]
+    avatar: dict[str, str] = Field(default_factory=dict)
+
+
+class UserIn(BaseModel):
+    name: str = Field(min_length=1, max_length=40)
+    about: str = Field(default="", max_length=persona.ABOUT_LIMIT)
+
+
+@app.get("/agent")
+def get_agent() -> dict:
+    return _agent_json(persona.current())
+
+
+@app.put("/setup/agent")
+def setup_agent(body: AgentIn) -> dict:
+    try:
+        return _agent_json(persona.save_agent(_setup_memory(), body.name, body.gender, body.avatar))
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+
+
+@app.put("/setup/user")
+def setup_user(body: UserIn) -> dict:
+    try:
+        return persona.save_user(_setup_memory(), body.name, body.about)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+
+
+@app.post("/setup/finish")
+def setup_finish() -> dict:
+    memory = _setup_memory()
+    if not claude_status(force=True)["logged_in"]:
+        raise HTTPException(409, "Claude Code is not logged in yet")
+    if not (memory / persona.AGENT_FILE).is_file():
+        raise HTTPException(409, "the assistant has no name yet")
+    if not persona.user(memory)["name"]:
+        raise HTTPException(409, "tell the assistant your name first")
+    return _agent_json(persona.finish(memory, clock.now()))
 
 
 # ---------- Gandalf ----------

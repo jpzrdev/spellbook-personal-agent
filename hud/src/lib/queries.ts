@@ -33,7 +33,10 @@ import {
   type Backlink,
   type MemoryHealth,
   type SearchResult,
+  type Agent,
+  type SetupStatus,
 } from './api'
+import { DEFAULT_AGENT } from './avatar'
 import { chat } from './chatStore'
 
 // Periodic refetch + on window focus: what Gandalf or another device wrote shows up by itself.
@@ -483,5 +486,47 @@ export function useChecklistToTasks(slug: string) {
   return useMutation({
     mutationFn: () => post<{ created: string[] }>(`/library/${encodeURIComponent(slug)}/tasks`, {}),
     onSuccess: invalidate,
+  })
+}
+
+// ---------- First-run setup and the assistant's identity ----------
+
+export function useSetup() {
+  return useQuery({ queryKey: ['setup'], queryFn: () => api<SetupStatus>('/setup'), retry: false, staleTime: 30_000 })
+}
+
+/** The assistant's identity (name, gender, colors). Until it loads, the default: Gandalf, the grey wizard. */
+export function useAgent(): Agent {
+  const { data } = useQuery({ queryKey: ['agent'], queryFn: () => api<Agent>('/agent'), staleTime: Infinity, retry: false })
+  return data ?? DEFAULT_AGENT
+}
+
+export function useSaveAgent() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: Pick<Agent, 'name' | 'gender' | 'avatar'>) => put<Agent>('/setup/agent', body),
+    onSuccess: (agent) => {
+      qc.setQueryData(['agent'], agent)
+      return qc.invalidateQueries({ queryKey: ['setup'] })
+    },
+  })
+}
+
+export function useSaveUser() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { name: string; about: string }) => put<SetupStatus['user']>('/setup/user', body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['setup'] }),
+  })
+}
+
+export function useFinishSetup() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => post<Agent>('/setup/finish', {}),
+    onSuccess: (agent) => {
+      qc.setQueryData(['agent'], agent)
+      qc.setQueryData<SetupStatus>(['setup'], (old) => (old ? { ...old, done: true, agent } : old))
+    },
   })
 }

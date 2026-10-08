@@ -13,8 +13,8 @@ from pathlib import Path
 
 import numpy as np
 
-from app import locales
-from app.config import get_settings
+from app import locales, persona
+from app.config import DEFAULT_VOICE, get_settings
 from app.locales import t
 
 log = logging.getLogger("gandalf.voice")
@@ -47,7 +47,7 @@ def status() -> dict:
         "stt": (_whisper_folder() / "model.bin").is_file(),
         "tts": (p / "kokoro-v1.0.onnx").is_file() and (p / "voices-v1.0.bin").is_file(),
         "whisper_model": cfg.whisper_model,
-        "voice": cfg.tts_voice,
+        "voice": current_voice(),
         "language": cfg.language,
         "loaded": {"stt": _whisper is not None, "tts": _kokoro is not None},
     }
@@ -159,6 +159,12 @@ def _wav(samples: np.ndarray, rate: int) -> bytes:
     return buf.getvalue()
 
 
+def current_voice() -> str:
+    """GANDALF_VOICE, or the default for the language and the assistant's gender."""
+    cfg = get_settings()
+    return cfg.tts_voice or DEFAULT_VOICE[(cfg.language, persona.current().gender)]
+
+
 def voice_style(kokoro, voice: str):
     """One voice ("pm_santa") or a weighted mix ("pm_santa:0.5+bm_lewis:0.5").
 
@@ -182,9 +188,10 @@ def synthesize(text: str, voice: str | None = None, speed: float = 1.0) -> bytes
         raise ValueError("empty text")
     kokoro = _kokoro_model()
     cfg = get_settings()
+    voice = voice or current_voice()
     try:
-        style = voice_style(kokoro, voice or cfg.tts_voice)
+        style = voice_style(kokoro, voice)
     except (KeyError, ValueError) as e:
-        raise ValueError(f"invalid voice: {voice or cfg.tts_voice!r}") from e
+        raise ValueError(f"invalid voice: {voice!r}") from e
     samples, rate = kokoro.create(text, voice=style, speed=speed * cfg.voice_speed, lang=locales.current().KOKORO_LANGUAGE)
     return _wav(samples, rate)

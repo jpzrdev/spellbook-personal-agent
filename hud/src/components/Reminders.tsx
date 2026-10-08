@@ -3,7 +3,7 @@ import { useEffect } from 'react'
 import { useSearchParams } from 'react-router'
 import { post, type Reminder } from '../lib/api'
 import { usePush } from '../lib/push'
-import { useEditReminder, useReminders, useRemoveReminder } from '../lib/queries'
+import { useEditReminder, useReminders, useRemoveReminder, useAgent } from '../lib/queries'
 import { relativeTime } from '../lib/time'
 import { Badge, Button, Card, useToast } from './ui'
 
@@ -133,6 +133,7 @@ function useNotificationAction() {
 
 /** The Today screen's reminders card: upcoming alerts, snooze/complete and the notifications button. */
 export function Reminders() {
+  const agentName = useAgent().name
   const { data: items = [] } = useReminders()
   useNotificationAction()
   const pending = items.filter((x) => !x.done)
@@ -141,7 +142,7 @@ export function Reminders() {
     <Card
       className="h-full"
       title="Reminders"
-      subtitle="ask Gandalf: “remind me to … in 30 min”"
+      subtitle={`ask ${agentName}: “remind me to … in 30 min”`}
       icon={<AlarmClock />}
       color="violet"
       actions={pending.length > 0 ? <Badge color="violet">{pending.length}</Badge> : undefined}

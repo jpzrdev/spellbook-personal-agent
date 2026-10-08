@@ -17,6 +17,7 @@ import {
   useRunSkill,
   useSaveNote,
   useTree,
+  useAgent,
 } from '../lib/queries'
 
 const IMAGE = /\.(png|jpe?g|gif|webp|svg)$/i
@@ -142,6 +143,7 @@ function Backlinks({ path }: { path: string }) {
 }
 
 function Editor({ note, onDone, onReload }: { note: MemoryNote; onDone: () => void; onReload: () => void }) {
+  const agentName = useAgent().name
   const [text, setText] = useState(note.raw ?? '')
   const [conflict, setConflict] = useState(false)
   const save = useSaveNote()
@@ -169,7 +171,7 @@ function Editor({ note, onDone, onReload }: { note: MemoryNote; onDone: () => vo
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-3">
       {note.path.startsWith('wiki/') && (
-        <p className="text-sm text-ink-muted">Gandalf maintains wiki/; your corrections are kept.</p>
+        <p className="text-sm text-ink-muted">{agentName} maintains wiki/; your corrections are kept.</p>
       )}
       <label htmlFor="note-editor" className="sr-only">
         Note content
@@ -189,7 +191,7 @@ function Editor({ note, onDone, onReload }: { note: MemoryNote; onDone: () => vo
       />
       {conflict && (
         <div role="alert" className="flex flex-col gap-2 rounded-control p-3 shadow-sunken-sm">
-          <p className="text-sm font-semibold">This note changed since you opened it (Gandalf or another device saved it).</p>
+          <p className="text-sm font-semibold">This note changed since you opened it ({agentName} or another device saved it).</p>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="secondary" onClick={() => (onReload(), onDone())}>
               Discard mine and reload
@@ -330,6 +332,7 @@ const HEALTH: Array<{ key: keyof MemoryHealth['counts']; label: string }> = [
 
 /** The wiki's health: the mechanical check (no AI) and a button for the lint-wiki skill. */
 function Health({ onOpen }: { onOpen: (p: string) => void }) {
+  const agentName = useAgent().name
   const { data } = useMemoryHealth()
   const run = useRunSkill()
   const toast = useToast()
@@ -379,9 +382,9 @@ function Health({ onOpen }: { onOpen: (p: string) => void }) {
           )
         }
       >
-        Check with Gandalf
+        Check with {agentName}
       </Button>
-      <p className="text-xs text-ink-muted">Gandalf fixes links and indexes and reports contradictions, stale facts and gaps (uses your Claude quota).</p>
+      <p className="text-xs text-ink-muted">{agentName} fixes links and indexes and reports contradictions, stale facts and gaps (uses your Claude quota).</p>
     </Card>
   )
 }
@@ -429,6 +432,7 @@ function NoteCard({ path, onDialog, onOpen }: { path: string; onDialog: (d: Dial
 }
 
 export function Memory() {
+  const agentName = useAgent().name
   const { data: tree = [], isPending } = useTree()
   const [params, setParams] = useSearchParams()
   const [term, setTerm] = useState('')
@@ -443,7 +447,7 @@ export function Memory() {
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-4xl font-semibold tracking-tight">Memory</h1>
-          <p className="mt-1 text-ink-muted">Your notes and the wiki Gandalf keeps from them. Read, edit and search everything here.</p>
+          <p className="mt-1 text-ink-muted">Your notes and the wiki {agentName} keeps from them. Read, edit and search everything here.</p>
         </div>
         <Button onClick={() => setDialog({ kind: 'new' })}>
           <FilePlus className="size-4" aria-hidden /> New note

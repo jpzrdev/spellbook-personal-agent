@@ -4,7 +4,7 @@ import { Markdown } from '../components/Markdown'
 import { Badge, Card, EmptyState, Modal, Select, Tabs, TierBadge, type Color } from '../components/ui'
 import { UsageByDay } from '../components/UsageByDay'
 import { cn } from '../lib/cn'
-import { useCosts, useReceipt, useReceipts } from '../lib/queries'
+import { useCosts, useReceipt, useReceipts, useAgent } from '../lib/queries'
 import { relativeTime } from '../lib/time'
 
 const STATUS: Record<string, Color> = { ok: 'primary', error: 'ember', cancelled: 'wood', timed_out: 'ember' }
@@ -61,6 +61,7 @@ function ReceiptDetail({ id, onClose }: { id: string | null; onClose: () => void
 }
 
 export function Receipts() {
+  const agentName = useAgent().name
   const [days, setDays] = useState(30)
   const [showTable, setShowTable] = useState(false)
   const [tier, setTier] = useState('')
@@ -77,7 +78,7 @@ export function Receipts() {
       <header>
         <h1 className="text-4xl font-semibold tracking-tight">Receipts &amp; costs</h1>
         <p className="mt-1 text-ink-muted">
-          Every request to Gandalf becomes a receipt in <code className="font-mono text-sm">receipts/</code>. The "≈ US$" is the API equivalent
+          Every request to {agentName} becomes a receipt in <code className="font-mono text-sm">receipts/</code>. The "≈ US$" is the API equivalent
           reported by Claude Code, for reference only: you pay for the subscription.
         </p>
       </header>
@@ -95,7 +96,7 @@ export function Receipts() {
             />
             <Stat
               title="This month"
-              subtitle="requests to Gandalf"
+              subtitle={`requests to ${agentName}`}
               value={`${costs.month.calls['1'] + costs.month.calls['2'] + costs.month.calls['3']}`}
               icon={<Hash />}
               color="primary"
@@ -113,7 +114,7 @@ export function Receipts() {
 
           <Card
             title="Usage per day"
-            subtitle="calls to Gandalf, by tier"
+            subtitle={`calls to ${agentName}, by tier`}
             icon={<BarChart3 />}
             color="primary"
             actions={

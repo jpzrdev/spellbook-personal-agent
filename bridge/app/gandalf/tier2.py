@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from app import locales
+from app import locales, persona
 from app.config import get_settings
 from app.gandalf import claude_cli
 from app.gandalf.context import build_context
@@ -125,7 +125,7 @@ def language_instruction() -> str:
 
 def system_prompt() -> str:
     parts = [(PROMPTS / a).read_text(encoding="utf-8").strip() for a in PROMPT_FILES]
-    return "\n\n".join([*parts, language_instruction()])
+    return persona.render("\n\n".join([*parts, language_instruction()]))
 
 
 def _args() -> list[str]:
@@ -147,7 +147,8 @@ def decide(memory: Path, request: str, now: datetime, previous: list[dict] | Non
     context = build_context(memory, now)
     prompt = f"<context>\n{context}\n</context>\n\n"
     if previous:
-        turns = "\n\n".join(f"User: {x['question'].strip()}\nGandalf: {x['answer'].strip()}" for x in previous)
+        name = persona.current().name
+        turns = "\n\n".join(f"User: {x['question'].strip()}\n{name}: {x['answer'].strip()}" for x in previous)
         prompt += f"<previous_conversation>\n{turns}\n</previous_conversation>\n\n"
     if note:
         path, text = note

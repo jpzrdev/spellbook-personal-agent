@@ -383,3 +383,23 @@ export type ProposedEvent = {
 export type ProposalSummary = { id: string; event: ProposedEvent; status: 'pending' | 'confirmed' | 'discarded'; session_id?: string | null }
 
 export type PushDevice = { device: string; since: string; endpoint: string }
+
+/** The parts of the assistant's drawing the user colors in the setup (hex colors). */
+export type Avatar = { hat: string; robe: string; hair: string; skin: string; gem: string }
+export type Gender = 'male' | 'female'
+
+/** The assistant's identity (memory/agent.json); Gandalf, the grey wizard, until the setup is done. */
+export type Agent = { name: string; gender: Gender; avatar: Avatar; setup_done: string | null; kind: 'wizard' | 'witch' }
+
+export type ClaudeStatus = { installed: boolean; logged_in: boolean; method: string | null }
+
+export type SetupStatus = {
+  done: boolean
+  memory_exists: boolean
+  claude: ClaudeStatus
+  agent: Agent
+  user: { name: string; about: string }
+}
+
+type Connector = { found: boolean; connected: boolean; name: string | null }
+export type Connectors = { servers: Array<{ name: string; connected: boolean }>; gmail: Connector; calendar: Connector }

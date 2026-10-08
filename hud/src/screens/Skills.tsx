@@ -13,7 +13,7 @@ import { useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router'
 import { Badge, BentoGrid, BentoItem, Button, Card, EmptyState, Modal, Textarea, useToast, type Color } from '../components/ui'
 import type { Skill } from '../lib/api'
-import { useRunSkill, useSkills } from '../lib/queries'
+import { useRunSkill, useSkills, useAgent } from '../lib/queries'
 import { relativeTime } from '../lib/time'
 
 const LOOK: Record<string, { icon: ReactNode; color: Color }> = {
@@ -54,6 +54,7 @@ function SkillCard({ skill, onRun }: { skill: Skill; onRun: () => void }) {
 }
 
 export function Skills() {
+  const agentName = useAgent().name
   const { data: skills = [], isPending, error } = useSkills()
   const run = useRunSkill()
   const toast = useToast()
@@ -82,7 +83,7 @@ export function Skills() {
       <header>
         <h1 className="text-4xl font-semibold tracking-tight">Skills</h1>
         <p className="mt-1 text-ink-muted">
-          Claude Code recipes in the project's <code className="font-mono text-sm">skills/</code> folder. Gandalf picks them by itself
+          Claude Code recipes in the project's <code className="font-mono text-sm">skills/</code> folder. {agentName} picks them by itself
           and can create or edit them (just ask). Each run opens a session in Terminals.
         </p>
       </header>

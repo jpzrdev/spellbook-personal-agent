@@ -1,4 +1,4 @@
-import { lazy } from 'react'
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Route, Routes } from 'react-router'
 import { Layout } from './components/Layout'
 import { ToastProvider } from './components/ui'
@@ -21,12 +21,21 @@ const Library = screen(() => import('./screens/Library'), 'Library')
 const LibraryTopicScreen = screen(() => import('./screens/Library'), 'LibraryTopicScreen')
 const Receipts = screen(() => import('./screens/Receipts'), 'Receipts')
 const UiCatalog = screen(() => import('./screens/UiCatalog'), 'UiCatalog')
+const Setup = screen(() => import('./screens/Setup'), 'Setup')
 
 export default function App() {
   return (
     <ToastProvider>
       <BrowserRouter>
         <Routes>
+          <Route
+            path="setup"
+            element={
+              <Suspense fallback={null}>
+                <Setup />
+              </Suspense>
+            }
+          />
           <Route element={<Layout />}>
             <Route index element={<Today />} />
             <Route path="chat" element={<Chat />} />

@@ -6,4 +6,4 @@ sources: []
 ---
 # Learned
 
-Facts Gandalf picked up from your conversations, newest at the bottom. Edit or delete any line; the wiki check (lint) folds them into the other notes.
+Facts your assistant picked up from your conversations, newest at the bottom. Edit or delete any line; the wiki check (lint) folds them into the other notes.

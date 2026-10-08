@@ -229,3 +229,28 @@ def login_status() -> dict:
         return {"installed": False, "logged_in": False, "method": None}
     except (subprocess.TimeoutExpired, json.JSONDecodeError, OSError):
         return {"installed": True, "logged_in": False, "method": None}
+
+
+def mcp_list(cwd: Path) -> str:
+    """`claude mcp list` (it checks each server, a few seconds). Shows the claude.ai connectors (Gmail, Calendar…)."""
+    proc = subprocess.run(
+        resolve_command() + ["mcp", "list"],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=60,
+        env=_environment(),
+        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+    )
+    return proc.stdout
+
+
+def open_login() -> bool:
+    """Opens `claude auth login` in a new console window on this PC (it needs a real terminal: the browser
+    sign-in may ask to paste a code back). Only on Windows; elsewhere the HUD shows the command to run."""
+    if os.name != "nt":
+        return False
+    subprocess.Popen(resolve_command() + ["auth", "login"], env=_environment(), creationflags=subprocess.CREATE_NEW_CONSOLE)
+    return True
