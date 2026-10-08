@@ -3,7 +3,7 @@ import { useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
 import type { Annotation } from '../lib/api'
 import { cn } from '../lib/cn'
-import { useRemoveAnnotation, useSaveAnnotation, useSendMaterial } from '../lib/queries'
+import { useRemoveAnnotation, useSaveAnnotation, useSendMaterial, useAgent } from '../lib/queries'
 import { relativeTime } from '../lib/time'
 import { Markdown } from './Markdown'
 import { Badge, Button, Input, Modal, Textarea, Toggle, useToast } from './ui'
@@ -154,6 +154,7 @@ export function SendMaterial({
   open: boolean
   onClose: () => void
 }) {
+  const agentName = useAgent().name
   const send = useSendMaterial(subject)
   const toast = useToast()
   const navigate = useNavigate()
@@ -173,7 +174,7 @@ export function SendMaterial({
           setText('')
           onClose()
           if (r.session) {
-            toast('success', 'Material received. Gandalf is structuring it (follow along in Terminals).')
+            toast('success', `Material received. ${agentName} is structuring it (follow along in Terminals).`)
             navigate(`/terminals?session=${r.session.id}`)
           } else toast('success', `Material saved (${r.sources.length} file[s])`)
         },
@@ -234,10 +235,10 @@ export function SendMaterial({
           )}
         </div>
         <Textarea label="Or paste some text" placeholder="Lecture notes, a book excerpt, a transcript…" value={text} onChange={(e) => setText(e.target.value)} />
-        <Toggle on={structure} onChange={setStructure} showLabel label="Structure with Gandalf" />
+        <Toggle on={structure} onChange={setStructure} showLabel label={`Structure with ${agentName}`} />
         <p className="text-xs text-ink-muted">
           {structure
-            ? `Gandalf reads the material and ${topic ? 'adds it to the topic (or creates new topics if it covers something else)' : 'adds it to the existing topics or creates new ones'}, explaining the new content. Uses your Claude quota.`
+            ? `${agentName} reads the material and ${topic ? 'adds it to the topic (or creates new topics if it covers something else)' : 'adds it to the existing topics or creates new ones'}, explaining the new content. Uses your Claude quota.`
             : 'The material is only stored in the subject (the _sources/ folder), without AI.'}
         </p>
       </div>

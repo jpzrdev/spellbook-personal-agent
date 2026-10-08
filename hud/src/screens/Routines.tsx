@@ -27,6 +27,7 @@ import {
   useRoutines,
   useRunRoutine,
   useSkills,
+  useAgent,
 } from '../lib/queries'
 import { buildCron, readCron, relativeTime, type Days } from '../lib/time'
 
@@ -366,6 +367,7 @@ function RoutineForm({ open, onClose, routine }: { open: boolean; onClose: () =>
 }
 
 export function Routines() {
+  const agentName = useAgent().name
   const { data: routines = [], isPending, error } = useRoutines()
   const remove = useRemoveRoutine()
   const toast = useToast()
@@ -393,7 +395,7 @@ export function Routines() {
       ) : error ? (
         <p role="alert" className="font-semibold text-danger">{error.message}</p>
       ) : routines.length === 0 ? (
-        <EmptyState icon={<Repeat />} title="No routines" description="Create one so Gandalf works on his own at the right time." />
+        <EmptyState icon={<Repeat />} title="No routines" description={`Create one so ${agentName} works on its own at the right time.`} />
       ) : (
         <div className="grid gap-6 md:grid-cols-2">
           {routines.map((r) => (

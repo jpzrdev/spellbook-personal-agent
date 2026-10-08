@@ -6,8 +6,9 @@ sources: []
 ---
 # Profile
 
-Short context Gandalf reads on every request. Keep it lean.
+Short context your assistant reads on every request. Keep it lean.
 
+- Name: _fill in (the setup does it)_.
 - Language: _fill in (the same as `GANDALF_LANGUAGE` in the .env)_.
 - Time zone: America/Sao_Paulo.
 - Goals: _fill in_.

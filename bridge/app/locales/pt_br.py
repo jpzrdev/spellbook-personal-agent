@@ -199,13 +199,13 @@ MESSAGES = {
     "file.tasks_header": "# Tarefas\n",
     "file.learned_header": (
         "# Aprendido\n\n"
-        "Fatos que o Gandalf captou nas conversas, os mais novos no fim. Edite ou apague qualquer linha; "
+        "Fatos que o seu assistente captou nas conversas, os mais novos no fim. Edite ou apague qualquer linha; "
         "a checagem do wiki (lint) os incorpora às outras notas.\n"
     ),
-    "file.learned_index_line": "- [[wiki/about-me/learned|Aprendido]]: fatos que o Gandalf captou nas conversas.",
+    "file.learned_index_line": "- [[wiki/about-me/learned|Aprendido]]: fatos que o seu assistente captou nas conversas.",
     "file.reminders_header": (
         "# Lembretes\n\n"
-        "Avisos do Gandalf (notificação no celular/PC). Pode editar à mão:\n"
+        "Avisos do seu assistente (notificação no celular/PC). Pode editar à mão:\n"
         "`- [ ] texto ⏰ AAAA-MM-DD HH:MM` (uma vez) ou `- [ ] texto 🔁 <cron>` (repete; ex.: `0 22 * * *` = todo dia 22h).\n"
         "Marcar [x] encerra (ou pausa, se repetir).\n\n"
     ),

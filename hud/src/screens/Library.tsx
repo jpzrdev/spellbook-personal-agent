@@ -8,7 +8,7 @@ import { focusRing } from '../components/ui/styles'
 import type { LibraryTopic } from '../lib/api'
 import { cn } from '../lib/cn'
 import { shortDate } from '../lib/dates'
-import { useChecklistToTasks, useLibrary, useLibraryTopic, useNewResearch, useNote } from '../lib/queries'
+import { useAgent, useChecklistToTasks, useLibrary, useLibraryTopic, useNewResearch, useNote } from '../lib/queries'
 
 const url = (slug: string, note?: string) => `/library/${encodeURIComponent(slug)}${note ? `?part=${encodeURIComponent(note)}` : ''}`
 
@@ -98,6 +98,7 @@ function TopicCard({ t }: { t: LibraryTopic }) {
 }
 
 export function Library() {
+  const agentName = useAgent().name
   const { data: topics = [], isPending, error } = useLibrary()
   const [researching, setResearching] = useState(false)
   return (
@@ -120,7 +121,7 @@ export function Library() {
           icon={<BookMarked />}
           color="silver"
           title="Nothing saved yet"
-          description="Ask Gandalf something that needs research (“I want to move to Canada, what do I need to know?”, “put together a trip plan for Japan”) and tap “Save to memory”."
+          description={`Ask ${agentName} something that needs research (“I want to move to Canada, what do I need to know?”, “put together a trip plan for Japan”) and tap “Save to memory”.`}
           action={<Button onClick={() => setResearching(true)}><Plus className="size-4" aria-hidden /> New research</Button>}
         />
       ) : (

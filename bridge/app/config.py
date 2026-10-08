@@ -38,6 +38,7 @@ class Settings:
     ephemeral_hours: float
     # Voice (offline)
     whisper_model: str
+    # GANDALF_VOICE, or empty: the default for the language and the assistant's gender (speech.voice.current_voice)
     tts_voice: str
     voice_speed: float
     # Reminders, notifications and event creation
@@ -62,9 +63,14 @@ def _language(value: str) -> str:
     return "en"
 
 
-# Default Kokoro voice per language. Gandalf in Portuguese mixes the older Brazilian voice with a
-# deep British one; in English, a deep British voice.
-DEFAULT_VOICE = {"pt-BR": "pm_santa:0.5+bm_lewis:0.5", "en": "bm_lewis"}
+# Default Kokoro voice per language and the assistant's gender (chosen in the setup). The wizard in Portuguese
+# mixes the older Brazilian voice with a deep British one; in English, a deep British voice.
+DEFAULT_VOICE = {
+    ("pt-BR", "male"): "pm_santa:0.5+bm_lewis:0.5",
+    ("en", "male"): "bm_lewis",
+    ("pt-BR", "female"): "pf_dora",
+    ("en", "female"): "bf_emma",
+}
 
 
 def _memory_path() -> Path:
@@ -102,7 +108,7 @@ def get_settings() -> Settings:
         data_path=Path(_env("DATA_DIR") or REPO_ROOT / "bridge" / "data"),
         ephemeral_hours=float(_env("EPHEMERAL_HOURS") or 48),
         whisper_model=_env("WHISPER_MODEL") or "medium",
-        tts_voice=_env("VOICE") or DEFAULT_VOICE[language],
+        tts_voice=_env("VOICE"),
         # Gandalf speaks a little slower than the default.
         voice_speed=float(_env("VOICE_SPEED") or 0.9),
         # Contact in the VAPID token (required by push services; does not need to be real).

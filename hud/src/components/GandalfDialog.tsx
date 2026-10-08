@@ -10,6 +10,7 @@ import { Mascot } from './Mascot'
 import { Pomodoro } from './Pomodoro'
 import { Modal, Orb, useToast } from './ui'
 import { focusRing } from './ui/styles'
+import { useAgent } from '../lib/queries'
 
 const HINT = {
   idle: 'Hold to talk',
@@ -23,6 +24,7 @@ const CLICK_MS = 300
 
 /** The fixed side stack (on every screen): pomodoro, written conversation and the Orb (hold to talk). */
 export function GandalfDialog() {
+  const agentName = useAgent().name
   const [open, setOpen] = useState(false)
   const toast = useToast()
   const { data: voiceStatus } = useQuery({ queryKey: ['voice'], queryFn: () => api<VoiceStatus>('/voice/status'), staleTime: 60_000 })
@@ -80,7 +82,7 @@ export function GandalfDialog() {
         <Pomodoro />
         <button
           type="button"
-          aria-label="Open the conversation with Gandalf"
+          aria-label={`Open the conversation with ${agentName}`}
           onClick={() => setOpen(true)}
           className={cn(
             'grid size-11 cursor-pointer place-items-center rounded-pill bg-surface text-ink-muted shadow-raised-sm hover:text-ink active:shadow-sunken-sm',
@@ -114,7 +116,7 @@ export function GandalfDialog() {
           />
         </div>
       </div>
-      <Modal open={open} onClose={() => setOpen(false)} title="Talk to Gandalf" icon={<Sparkles />}>
+      <Modal open={open} onClose={() => setOpen(false)} title={`Talk to ${agentName}`} icon={<Sparkles />}>
         <Mascot size="sm" className="mb-2" />
         <ChatThread height="max-h-[45vh]" />
         <Link to="/chat" onClick={() => setOpen(false)} className="mt-3 inline-block text-xs font-semibold text-primary-text">

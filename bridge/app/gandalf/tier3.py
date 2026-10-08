@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from app import clock, ephemeral, locales, push
+from app import clock, ephemeral, locales, persona, push
 from app.config import get_settings
 from app.events import Channel, system_events
 from app.gandalf import claude_cli
@@ -284,7 +284,7 @@ class Manager:
             extras = _skill_tools(skill.tools, writes=s.output == "memory")
             if extras:
                 tools += "," + ",".join(extras)
-        system = language_instruction()
+        system = persona.identity_instruction() + "\n\n" + language_instruction()
         if s.output == "memory" and not s.routine and cfg.auto_learn:
             system += "\n\n" + LEARN_INSTRUCTION
         writes_skills = s.output == "memory" and skills_dir().is_dir()

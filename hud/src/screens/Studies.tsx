@@ -30,7 +30,7 @@ import { focusRing, sunken } from '../components/ui/styles'
 import { MAX_QUIZ_QUESTIONS, type QuizGrade, type QuizQuestion, type QuizType, type Subject, type SubjectDetail, type Topic, type Verdict } from '../lib/api'
 import { cn } from '../lib/cn'
 import { pomodoro } from '../lib/pomodoro'
-import { useAnnotations, useGenerateStudy, useGradeQuiz, useNote, useQuiz, useRemoveSubject, useSaveAnnotation, useStudies, useSubject } from '../lib/queries'
+import { useAnnotations, useGenerateStudy, useGradeQuiz, useNote, useQuiz, useRemoveSubject, useSaveAnnotation, useStudies, useSubject, useAgent } from '../lib/queries'
 
 const subjectUrl = (s: string) => `/studies/${encodeURIComponent(s)}`
 const topicUrl = (s: string, note: string) => `${subjectUrl(s)}/topic?note=${encodeURIComponent(note)}`
@@ -52,6 +52,7 @@ function Back({ to, text }: { to: string; text: string }) {
 
 /** Asks Claude Code (prepare-studies skill) to generate material; shows the session in Terminals. */
 function useGenerate() {
+  const agentName = useAgent().name
   const generate = useGenerateStudy()
   const toast = useToast()
   const navigate = useNavigate()
@@ -60,7 +61,7 @@ function useGenerate() {
     generate: (p: { request: string; kind: 'subject' | 'topic' | 'deepen'; note?: string }, onDone?: () => void) =>
       generate.mutate(p, {
         onSuccess: (s) => {
-          toast('success', 'Gandalf started preparing the material (follow along in Terminals)')
+          toast('success', `${agentName} started preparing the material (follow along in Terminals)`)
           onDone?.()
           navigate(`/terminals?session=${s.id}`)
         },
@@ -72,6 +73,7 @@ function useGenerate() {
 // ---------- subject list ----------
 
 function NewSubject({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const agentName = useAgent().name
   const { generate, pending } = useGenerate()
   const [text, setText] = useState('')
 
@@ -107,7 +109,7 @@ function NewSubject({ open, onClose }: { open: boolean; onClose: () => void }) {
           onChange={(e) => setText(e.target.value)}
         />
         <p className="text-xs text-ink-muted">
-          Gandalf researches the official content and writes a few long, in-depth topics for you to study at your own pace, ask questions about and generate quizzes from. It takes a few minutes and uses your Claude quota.
+          {agentName} researches the official content and writes a few long, in-depth topics for you to study at your own pace, ask questions about and generate quizzes from. It takes a few minutes and uses your Claude quota.
         </p>
       </form>
     </Modal>
@@ -139,6 +141,7 @@ function SubjectCard({ s }: { s: Subject }) {
 }
 
 export function Studies() {
+  const agentName = useAgent().name
   const { data: subjects = [], isPending, error } = useStudies()
   const [creating, setCreating] = useState(false)
 
@@ -147,7 +150,7 @@ export function Studies() {
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-4xl font-semibold tracking-tight">Studies</h1>
-          <p className="mt-1 text-ink-muted">Your study collection: read, take notes, ask questions and test yourself with Gandalf's quizzes.</p>
+          <p className="mt-1 text-ink-muted">Your study collection: read, take notes, ask questions and test yourself with {agentName}'s quizzes.</p>
         </div>
         <Button onClick={() => setCreating(true)}>
           <Plus className="size-4" aria-hidden /> New subject
@@ -162,7 +165,7 @@ export function Studies() {
           icon={<GraduationCap />}
           color="violet"
           title="No subjects yet"
-          description="Tap “New subject” and say what you want to study: Gandalf researches the content and writes the topics."
+          description={`Tap “New subject” and say what you want to study: ${agentName} researches the content and writes the topics.`}
           action={<Button onClick={() => setCreating(true)}><Plus className="size-4" aria-hidden /> New subject</Button>}
         />
       ) : (
@@ -183,7 +186,7 @@ export function Studies() {
 
 const TYPES: Array<{ type: QuizType; text: string; hint: string }> = [
   { type: 'multiple', text: 'Multiple choice', hint: '4 options; graded right away' },
-  { type: 'text', text: 'Free text', hint: 'you write; Gandalf grades it' },
+  { type: 'text', text: 'Free text', hint: 'you write; your assistant grades it' },
 ]
 
 function GenerateQuiz({ subject, topic, topicTitle, open, onClose }: { subject: string; topic?: string; topicTitle?: string; open: boolean; onClose: () => void }) {
@@ -338,6 +341,7 @@ function TopicRow({ subject, t }: { subject: string; t: Topic }) {
 }
 
 export function SubjectScreen() {
+  const agentName = useAgent().name
   const { subject = '' } = useParams()
   const { data: s, isPending, error } = useSubject(subject)
   const { generate, pending } = useGenerate()
@@ -363,7 +367,7 @@ export function SubjectScreen() {
           <Button variant="ghost" className="hover:text-danger" onClick={() => setDeleting(true)} title="Delete the subject with all its topics, annotations and material">
             <Trash2 className="size-4" aria-hidden /> Delete
           </Button>
-          <Button variant="ghost" onClick={() => setMaterial(true)} title="Send documents or text for Gandalf to structure">
+          <Button variant="ghost" onClick={() => setMaterial(true)} title={`Send documents or text for ${agentName} to structure`}>
             <Upload className="size-4" aria-hidden /> Send material
           </Button>
           {s.topics.length > 0 && (
@@ -452,6 +456,7 @@ export function SubjectScreen() {
 // ---------- topic ----------
 
 export function TopicScreen() {
+  const agentName = useAgent().name
   const { subject = '' } = useParams()
   const [params] = useSearchParams()
   const note = params.get('note') ?? ''
@@ -489,7 +494,7 @@ export function TopicScreen() {
           <Button variant="ghost" onClick={() => pomodoro.focus(`${title}${s ? ` (${s.title})` : ''}`)} title="Start a pomodoro focus block on this topic">
             <Timer className="size-4" aria-hidden /> Focus
           </Button>
-          <Button variant="secondary" onClick={() => setDeepen('')} title="Ask Gandalf to expand this topic">
+          <Button variant="secondary" onClick={() => setDeepen('')} title={`Ask ${agentName} to expand this topic`}>
             <Wand2 className="size-4" aria-hidden /> Deepen
           </Button>
           <Button onClick={() => setQuiz(true)} title="Questions about this topic">
@@ -525,7 +530,7 @@ export function TopicScreen() {
           )}
         </Card>
         <div className="flex flex-col gap-6">
-          <Card title="Questions" subtitle="Gandalf answers based on this note and your annotations" icon={<MessageCircleQuestion />} color="primary">
+          <Card title="Questions" subtitle={`${agentName} answers based on this note and your annotations`} icon={<MessageCircleQuestion />} color="primary">
             <ChatThread key={note} note={note} newOnly height="max-h-[40vh]" placeholder="Ask about this topic…" />
           </Card>
           <Card title="My annotations" subtitle="about this topic" icon={<NotebookPen />} color="silver">
@@ -560,7 +565,7 @@ export function TopicScreen() {
             onChange={(e) => setDeepen(e.target.value)}
           />
           <p className="text-xs text-ink-muted">
-            Gandalf expands the note with explanations, examples and pitfalls, using your annotations and the uploaded material, without losing what's already there. It takes a few minutes and uses your Claude quota.
+            {agentName} expands the note with explanations, examples and pitfalls, using your annotations and the uploaded material, without losing what's already there. It takes a few minutes and uses your Claude quota.
           </p>
         </div>
       </Modal>
@@ -602,6 +607,7 @@ function CurrentQuestion({
   result: Result | undefined
   onResult: (r: Result) => void
 }) {
+  const agentName = useAgent().name
   const grade = useGradeQuiz(subject)
   const toast = useToast()
   const [choice, setChoice] = useState<number | null>(null)
@@ -669,7 +675,7 @@ function CurrentQuestion({
       )}
       {!result && (
         <Button type="submit" className="self-end" disabled={q.options ? choice === null : !text.trim() || grade.isPending}>
-          {grade.isPending ? 'Gandalf is grading…' : 'Answer'}
+          {grade.isPending ? `${agentName} is grading…` : 'Answer'}
         </Button>
       )}
     </form>
@@ -702,6 +708,7 @@ export function QuizScreen() {
 }
 
 function QuizSession() {
+  const agentName = useAgent().name
   const { subject = '' } = useParams()
   const [params] = useSearchParams()
   const location = useLocation()
@@ -755,7 +762,7 @@ function QuizSession() {
       {isPending || (isFetching && !quiz) ? (
         <Card className="min-h-48 items-center justify-center">
           <Sparkles className="size-6 animate-pulse text-violet" aria-hidden />
-          <p className="text-ink-muted">Gandalf is preparing {count} question(s)…</p>
+          <p className="text-ink-muted">{agentName} is preparing {count} question(s)…</p>
         </Card>
       ) : error ? (
         <EmptyState

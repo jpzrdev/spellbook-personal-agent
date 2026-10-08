@@ -207,13 +207,13 @@ MESSAGES = {
     "file.tasks_header": "# Tasks\n",
     "file.learned_header": (
         "# Learned\n\n"
-        "Facts Gandalf picked up from your conversations, newest at the bottom. Edit or delete any line; "
+        "Facts your assistant picked up from your conversations, newest at the bottom. Edit or delete any line; "
         "the wiki check (lint) folds them into the other notes.\n"
     ),
-    "file.learned_index_line": "- [[wiki/about-me/learned|Learned]]: facts Gandalf picked up from conversations.",
+    "file.learned_index_line": "- [[wiki/about-me/learned|Learned]]: facts your assistant picked up from conversations.",
     "file.reminders_header": (
         "# Reminders\n\n"
-        "Gandalf's alerts (phone/PC notification). You can edit by hand:\n"
+        "Your assistant's alerts (phone/PC notification). You can edit by hand:\n"
         "`- [ ] text ⏰ YYYY-MM-DD HH:MM` (once) or `- [ ] text 🔁 <cron>` (repeats; e.g. `0 22 * * *` = every day at 22:00).\n"
         "Checking [x] ends it (or pauses it, if it repeats).\n\n"
     ),
