@@ -9,7 +9,7 @@ from pathlib import Path
 from app import locales, persona
 from app.config import get_settings
 from app.gandalf import claude_cli
-from app.gandalf.context import build_context
+from app.gandalf.context import build_context, time_context
 from app.locales import t
 
 PROMPTS = Path(__file__).parent / "prompts"
@@ -42,8 +42,9 @@ LEARN_ITEM = {
     "type": "object",
     "properties": {
         "fact": {"type": "string"},
-        "where": {"type": "string", "enum": ["profile", "raw"]},
+        "where": {"type": "string", "enum": ["profile", "raw", "recent"]},
         "replaces": {"type": ["string", "null"]},
+        "days": {"type": "integer"},
     },
     "required": ["fact", "where"],
 }
@@ -62,6 +63,8 @@ SCHEMA = {
         "kind": {"type": "string", "enum": ["research", "plan"]},
         "update": {"type": ["string", "null"]},
         "learn": {"type": "array", "items": LEARN_ITEM},
+        "thread": {"type": "string", "enum": ["continue", "new"]},
+        "title": {"type": "string"},
     },
     "required": ["action"],
 }
@@ -77,6 +80,8 @@ class Decision:
     items: list[dict] = field(default_factory=list)
     research: dict | None = None  # {topic, query, kind, update}
     learn: list[dict] = field(default_factory=list)  # facts to keep, alongside any action (app.memory.learn)
+    thread: str | None = None  # after a pause: "continue" the conversation or start a "new" one
+    title: str | None = None  # the conversation's title, when it has none yet
     model: str | None = None
     input_tokens: int = 0
     output_tokens: int = 0
@@ -128,9 +133,9 @@ def system_prompt() -> str:
     return persona.render("\n\n".join([*parts, language_instruction()]))
 
 
-def _args() -> list[str]:
+def _args(model: str | None = None) -> list[str]:
     return [
-        "--model", get_settings().tier2_model,
+        "--model", model or get_settings().tier2_model,
         "--tools", "",
         "--no-session-persistence",
         "--strict-mcp-config",
@@ -140,26 +145,25 @@ def _args() -> list[str]:
     ]
 
 
-def decide(memory: Path, request: str, now: datetime, previous: list[dict] | None = None,
-           note: tuple[str, str] | None = None) -> Decision:
-    """`previous`: the last turns of the conversation ({question, answer}), to understand short replies
-    like "tomorrow at 9" after Gandalf asked "when?"."""
-    context = build_context(memory, now)
-    prompt = f"<context>\n{context}\n</context>\n\n"
-    if previous:
-        name = persona.current().name
-        turns = "\n\n".join(f"User: {x['question'].strip()}\n{name}: {x['answer'].strip()}" for x in previous)
-        prompt += f"<previous_conversation>\n{turns}\n</previous_conversation>\n\n"
+def decide(memory: Path, request: str, now: datetime, conversation: str | None = None,
+           note: tuple[str, str] | None = None, model: str | None = None) -> Decision:
+    """`conversation`: the `<conversation>` block (app.conversations.context), so follow-ups like "tomorrow at 9"
+    after Gandalf asked "when?" make sense. `model` overrides GANDALF_TIER2_MODEL (a "deep" conversation).
+
+    Order matters for Claude Code's prompt cache: what changes least goes first, the time and the request last."""
+    prompt = f"<context>\n{build_context(memory, now)}\n</context>\n\n"
+    if conversation:
+        prompt += conversation + "\n\n"
     if note:
         path, text = note
         prompt += f'<note_being_studied path="{path}">\n{text[:8000]}\n</note_being_studied>\n\n'
-    prompt += f"<request>\n{request.strip()}\n</request>"
+    prompt += f"<now>\n{time_context(now)}\n</now>\n\n<request>\n{request.strip()}\n</request>"
 
     total_in = total_out = 0
     cost = 0.0
     last = None
     for attempt in (1, 2):  # invalid JSON: try once more
-        r = claude_cli.run_json(prompt, _args(), cwd=memory)
+        r = claude_cli.run_json(prompt, _args(model), cwd=memory)
         total_in += r.input_tokens
         total_out += r.output_tokens
         cost += r.cost_usd
@@ -181,6 +185,8 @@ def decide(memory: Path, request: str, now: datetime, previous: list[dict] | Non
                     "update": (str(data["update"]).strip() or None) if data.get("update") else None,
                 } if data["action"] == "research" else None,
                 learn=[x for x in data.get("learn") or [] if isinstance(x, dict)],
+                thread=data.get("thread") if data.get("thread") in ("continue", "new") else None,
+                title=str(data.get("title") or "").strip()[:80] or None,
                 model=r.model,
                 input_tokens=total_in,
                 output_tokens=total_out,

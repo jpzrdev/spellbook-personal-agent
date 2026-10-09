@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from app import clock, ephemeral, locales, persona, push
+from app import clock, conversations, ephemeral, locales, persona, push
 from app.config import get_settings
 from app.events import Channel, system_events
 from app.gandalf import claude_cli
@@ -49,7 +49,9 @@ LEARN_INSTRUCTION = (
     "Learning: if the user's request reveals a durable fact about them that is not in wiki/about-me/ yet "
     "(work, goals with a date, preferences, people close to them, constraints, a decision, or a correction of an "
     "old fact), add it as one line `- <fact> (YYYY-MM-DD)` at the end of wiki/about-me/learned.md (third person, "
-    "the user's language; remove the line it makes stale) and append a `learn` line to wiki/_log.md. Lasting "
+    "the user's language; remove the line it makes stale) and append a `learn` line to wiki/_log.md. What only "
+    "matters for a few days (what the user is in the middle of this week) goes instead to life/recent.md as "
+    "`- <fact> (YYYY-MM-DD → YYYY-MM-DD)` (today → the day it stops mattering, at most 7 days). Lasting "
     "knowledge that belongs to a topic goes to that topic's note, following the memory's rules. Never keep passing "
     "states, content of texts you were only asked to process, guesses, or secrets (passwords, document, card, "
     "account or phone numbers). Mention in the final answer, in one short line, what you learned."
@@ -76,6 +78,7 @@ class Session:
     notify: bool = False  # routine with "notify when done"
     fixes: int = 0  # automatic retries of a page that failed validation
     target: str | None = None  # the memory note the session works on (a page's button: the HUD shows it running there)
+    conversation: tuple[str, str] | None = None  # (conversation id, turn id): the chat turn that gets the result
     status: str = "queued"  # queued | running | ok | error | cancelled | timed_out
     claude_session_id: str | None = None
     resumed_from: str | None = None
@@ -211,6 +214,7 @@ class Manager:
         research: dict | None = None,
         fixes: int = 0,
         target: str | None = None,
+        conversation: tuple[str, str] | None = None,
     ) -> Session:
         previous = self.get(resumed_from) if resumed_from else None
         sk = get_skill(skill) if skill else None
@@ -232,6 +236,7 @@ class Manager:
             claude_session_id=previous.claude_session_id if previous else None,
             fixes=fixes,
             target=target,
+            conversation=conversation,
         )
         s.input_tokens, s.output_tokens, s.cost_usd = previous_tokens
         with self._lock:
@@ -429,6 +434,7 @@ class Manager:
                     s.error = (stderr or f"Claude Code exited with code {code}")[-500:]
 
         self._write_receipt(s, round((time.perf_counter() - start) * 1000))
+        self._complete_turn(s)
         self._notify(s)
         self._record(s, {"type": "gandalf_end", "status": s.status, "summary": s.summary()})
         self._changed(s)
@@ -507,6 +513,22 @@ class Manager:
             system_events.publish({"type": "receipt", "id": rid, "tier": 3, "routine": s.routine})
         except OSError as e:
             s.error = (s.error or "") + f" (receipt not written: {e})"
+
+    def _complete_turn(self, s: Session) -> None:
+        """The chat turn that opened the session gets its result, so the next question in the conversation sees it.
+        An ephemeral result stays out of the memory: the turn keeps only its id."""
+        if not s.conversation:
+            return
+        if s.status == "ok" and s.ephemeral_id:
+            kwargs = {"ephemeral_id": s.ephemeral_id}
+        elif s.status == "ok" and s.output not in ("ephemeral", "research"):
+            kwargs = {"answer": s.result}
+        else:
+            kwargs = {"answer": f"(the session ended with status {s.status})"}
+        try:
+            conversations.complete(self.memory, *s.conversation, **kwargs)
+        except OSError as e:
+            s.error = (s.error or "") + f" (conversation not updated: {e})"
 
     def _notify(self, s: Session) -> None:
         """Phone push: ephemeral summary ready, routine with a problem, event created.

@@ -1,4 +1,4 @@
-import { Blocks, BookMarked, CalendarDays, ChevronDown, GraduationCap, Library, MessageCircle, Palette, Receipt, Repeat, Search, Settings2, Sparkles, SlidersHorizontal, TerminalSquare, WandSparkles } from 'lucide-react'
+import { Blocks, BookMarked, CalendarDays, ChevronDown, GraduationCap, Library, MessageCircle, MessagesSquare, Palette, Receipt, Repeat, Search, Settings2, Sparkles, SlidersHorizontal, TerminalSquare, WandSparkles } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router'
 import { cn } from '../lib/cn'
@@ -20,6 +20,7 @@ const SCREEN_ICONS: Record<string, ReactNode> = { studies: <GraduationCap />, li
 
 /** The assistant's own machinery, grouped under its name (opened now and then, not every day). */
 const AGENT: NavItem[] = [
+  { to: '/conversations', label: 'Conversations', icon: <MessagesSquare />, hint: 'Past chats, to pick up again' },
   { to: '/terminals', label: 'Terminals', icon: <TerminalSquare />, hint: 'Claude Code sessions' },
   { to: '/skills', label: 'Skills', icon: <Sparkles />, hint: 'What it knows how to do' },
   { to: '/routines', label: 'Routines', icon: <Repeat />, hint: 'What it runs on a schedule' },

@@ -57,6 +57,13 @@ DATE_HINT_RE = re.compile(
 # ---------- Tier 1 commands ----------
 # Order matters: add/note before "tasks" (more generic). `rest` groups are cut from the original text.
 _PREFIX = r"^(?:(?:gandalf|jev),? )?"
+# A message that continues the conversation ("e amanhã?", "o segundo"): skips Tier 1 (which can't see the conversation).
+# Matched against the normalized text (lowercase, no accents); the \b keeps "e" from matching "evento".
+FOLLOW_UP_RE = re.compile(
+    r"^(?:e|tambem|entao|mas|e se|o primeiro|a primeira|o segundo|a segunda|o terceiro|a terceira|o ultimo"
+    r"|a ultima|o outro|a outra|esse|essa|esses|essas|isso|aquele|aquela|ele|ela|eles|elas|dele|dela)\b"
+)
+
 INTENTS: list[tuple[str, str]] = [
     ("add_task", _PREFIX + r"(?:adiciona|adicionar|adicione|add|cria|criar|crie|nova|novo)(?: uma)? tarefa:? (?P<rest>.+)$"),
     ("note", _PREFIX + r"(?:anota|anote|anotar|captura|capturar):? (?P<rest>.+)$"),
@@ -184,6 +191,7 @@ MESSAGES = {
     "capture.no_devices": "\n\n_Ative as notificações na tela Today para receber o aviso no celular._",
     "learn.profile": "🧠 Vou lembrar: {fact}",
     "learn.raw": "🧠 Guardado para o wiki: {fact} (`{path}`)",
+    "learn.recent": "🕑 Vou ter em mente nos próximos dias: {fact}",
     "router.not_understood": (
         "Esse pedido não está nos meus feitiços rápidos, amigo. Os que conheço de cor: "
         "\"o que tenho hoje/amanhã?\", \"minhas prioridades\", \"minhas tarefas\", "

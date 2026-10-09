@@ -81,11 +81,12 @@ export function useVoice({ onReply, onError }: Options = {}) {
       const id = chat.add(text)
       onReply?.()
       mascot.feed(15)
+      const { conversationId, deep } = chat.get()
       ask.mutate(
-        { text, source: 'voice' },
+        { text, source: 'voice', conversationId, deep },
         {
           onSuccess: (reply) => {
-            chat.update(id, { reply })
+            chat.settle(id, reply)
             void speak(reply.reply)
           },
           onError: (err) => {

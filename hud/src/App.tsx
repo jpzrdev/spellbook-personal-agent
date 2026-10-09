@@ -20,6 +20,7 @@ const Memory = screen(() => import('./screens/Memory'), 'Memory')
 const Library = screen(() => import('./screens/Library'), 'Library')
 const LibraryTopicScreen = screen(() => import('./screens/Library'), 'LibraryTopicScreen')
 const Receipts = screen(() => import('./screens/Receipts'), 'Receipts')
+const Conversations = screen(() => import('./screens/Conversations'), 'Conversations')
 const UiCatalog = screen(() => import('./screens/UiCatalog'), 'UiCatalog')
 const Setup = screen(() => import('./screens/Setup'), 'Setup')
 const Modules = screen(() => import('./screens/Spaces'), 'Modules')
@@ -54,6 +55,7 @@ export default function App() {
             <Route path="library/:slug" element={<LibraryTopicScreen />} />
             <Route path="memory" element={<Memory />} />
             <Route path="receipts" element={<Receipts />} />
+            <Route path="conversations" element={<Conversations />} />
             <Route path="ui" element={<UiCatalog />} />
             <Route path="modules" element={<Modules />} />
             <Route path="modules/:id" element={<ModulePreview />} />

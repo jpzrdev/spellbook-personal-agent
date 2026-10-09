@@ -126,7 +126,42 @@ export type GandalfReply = {
   data: Record<string, unknown>
   session_id: string | null
   needs_confirmation: boolean
+  /** The conversation the request went into (the Bridge keeps the turns). */
+  conversation_id?: string | null
+  /** After a pause: Gandalf started a new conversation (`other_id` = the one left behind) or continued this one. */
+  thread?: { decision: 'new' | 'continue'; other_id: string } | null
+  /** The turn's id in the conversation. */
+  turn_id?: string | null
 }
+
+export type ConversationPreview = {
+  id: string
+  title: string
+  created: string
+  updated: string
+  deep: boolean
+  turn_count: number
+  /** The running summary (markdown), empty while the conversation is short. */
+  summary: string
+  last_question: string
+  split_from: string | null
+}
+
+export type ConversationTurn = {
+  id: string
+  at: string
+  question: string
+  answer: string
+  tier: number
+  intent: string | null
+  source: string
+  receipt_id: string | null
+  session_id: string | null
+  ephemeral_id: string | null
+  reply: GandalfReply | null
+}
+
+export type Conversation = ConversationPreview & { summarized: number; turns: ConversationTurn[] }
 
 export type SessionStatus = 'queued' | 'running' | 'ok' | 'error' | 'cancelled' | 'timed_out'
 
