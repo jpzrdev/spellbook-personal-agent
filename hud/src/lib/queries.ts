@@ -35,10 +35,11 @@ import {
   type SearchResult,
   type Agent,
   type SetupStatus,
+  type Conversation,
+  type ConversationPreview,
 } from './api'
 import { DEFAULT_AGENT } from './avatar'
 import type { FieldValue, Module, SpaceConfig, SpaceDetail, SpaceItem, SpaceSummary, SpaceTemplate } from './spaces'
-import { chat } from './chatStore'
 
 // Periodic refetch + on window focus: what Gandalf or another device wrote shows up by itself.
 export function useToday() {
@@ -104,6 +105,8 @@ export function useAsk() {
       forceTier,
       source = 'hud',
       note,
+      conversationId,
+      deep,
     }: {
       text: string
       confirm?: boolean
@@ -111,9 +114,59 @@ export function useAsk() {
       source?: 'hud' | 'voice'
       /** Open study note: goes as context ("ask about this topic"). */
       note?: string
-    }) => post<GandalfReply>('/ask', { text, source, confirm, force_tier: forceTier ?? null, previous: chat.previous(), note: note ?? null }),
-    // A request may have created a task, a note or a session.
-    onSuccess: () => Promise.all([invalidate(), qc.invalidateQueries({ queryKey: ['sessions'] })]),
+      /** The conversation this continues (null starts one). */
+      conversationId?: string | null
+      /** The conversation's "deep" mode (Tier 2 with the smarter model). */
+      deep?: boolean
+    }) =>
+      post<GandalfReply>('/ask', {
+        text,
+        source,
+        confirm,
+        force_tier: forceTier ?? null,
+        note: note ?? null,
+        conversation_id: conversationId ?? null,
+        deep: deep ?? null,
+      }),
+    // A request may have created a task, a note or a session, and it changed a conversation.
+    onSuccess: () =>
+      Promise.all([invalidate(), qc.invalidateQueries({ queryKey: ['sessions'] }), qc.invalidateQueries({ queryKey: ['conversations'] })]),
+  })
+}
+
+export function useConversations(limit = 50, q = '') {
+  return useQuery({
+    queryKey: ['conversations', limit, q],
+    queryFn: () => api<ConversationPreview[]>(`/conversations?limit=${limit}&q=${encodeURIComponent(q)}`),
+    placeholderData: (previous) => previous,
+  })
+}
+
+/** Opening, splitting and merging return the whole conversation, for the chat to show. */
+export function useConversationAction() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, action, turnId }: { id: string; action: 'open' | 'merge-back' | 'split'; turnId?: string }) =>
+      action === 'open'
+        ? api<Conversation>(`/conversations/${id}`)
+        : post<Conversation>(`/conversations/${id}/${action}`, action === 'split' ? { turn_id: turnId } : {}),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['conversations'] }),
+  })
+}
+
+export function useUpdateConversation() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string; title?: string; deep?: boolean }) => patch<ConversationPreview>(`/conversations/${id}`, body),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['conversations'] }),
+  })
+}
+
+export function useDeleteConversation() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => del<{ deleted: string }>(`/conversations/${id}`),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['conversations'] }),
   })
 }
 

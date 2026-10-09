@@ -34,7 +34,7 @@ from pydantic import BaseModel, Field
 from starlette.requests import HTTPConnection
 from starlette.responses import FileResponse
 
-from app import clock, ephemeral, library, modules, persona, proposals, push
+from app import clock, conversations, ephemeral, library, modules, persona, proposals, push
 from app import reminders as reminder_scheduler
 from app import studies
 from app import studies_quiz as quiz
@@ -235,25 +235,21 @@ def setup_finish() -> dict:
 
 # ---------- Gandalf ----------
 
-class PreviousTurn(BaseModel):
-    question: str = Field(max_length=1000)
-    answer: str = Field(max_length=1500)
-
-
 class AskRequest(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
     source: Source = "hud"
     force_tier: Literal[1, 2, 3] | None = None
     confirm: bool = False
-    # The last turns of the conversation (the HUD sends up to 2 recent ones) so Tier 2 understands follow-ups.
-    previous: list[PreviousTurn] = Field(default_factory=list, max_length=2)
+    # The conversation this request continues (None starts a new one). The Bridge keeps the turns.
+    conversation_id: str | None = Field(default=None, max_length=40)
+    # Turn the conversation's "deep" mode on or off (Tier 2 with the smarter model).
+    deep: bool | None = None
     # Study note open in the HUD ("ask Gandalf about this topic"): goes as Tier 2 context.
     note: str | None = Field(default=None, max_length=500)
 
 
 @app.post("/ask")
 def ask(req: AskRequest, memory: Path = Depends(get_memory)) -> dict:
-    previous = [x.model_dump() for x in req.previous]
     note = None
     if req.note:
         path = (memory / req.note).resolve()
@@ -270,12 +266,81 @@ def ask(req: AskRequest, memory: Path = Depends(get_memory)) -> dict:
                 note_text += "\n\n## The user's annotations on this topic\n" + "\n\n".join(a["text"] for a in mine)
         note = (req.note, note_text)
     try:
-        r = gandalf.ask(memory, req.text, req.source, req.force_tier, req.confirm, previous, note)
+        r = gandalf.ask(memory, req.text, req.source, req.force_tier, req.confirm, note, req.conversation_id, req.deep)
     except claude_cli.ClaudeUnavailable as e:
         raise HTTPException(503, str(e)) from e
     except claude_cli.ClaudeFailed as e:
         raise HTTPException(502, str(e)) from e
     return asdict(r)
+
+
+# ---------- Conversations ----------
+
+class ConversationPatch(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=80)
+    deep: bool | None = None
+
+
+class SplitRequest(BaseModel):
+    turn_id: str = Field(min_length=1, max_length=40)
+
+
+def _conversation_or_404(memory: Path, conversation_id: str) -> conversations.Conversation:
+    c = conversations.load(memory, conversation_id)
+    if not c:
+        raise HTTPException(404, "conversation not found")
+    return c
+
+
+@app.get("/conversations")
+def list_conversations(limit: int = Query(50, ge=1, le=500), q: str = Query("", max_length=200),
+                       memory: Path = Depends(get_memory)) -> list[dict]:
+    return conversations.list_items(memory, limit, q)
+
+
+@app.get("/conversations/{conversation_id}")
+def get_conversation(conversation_id: str, memory: Path = Depends(get_memory)) -> dict:
+    return _conversation_or_404(memory, conversation_id).to_json()
+
+
+@app.patch("/conversations/{conversation_id}")
+def patch_conversation(conversation_id: str, p: ConversationPatch, memory: Path = Depends(get_memory)) -> dict:
+    c = _conversation_or_404(memory, conversation_id)
+    if p.title is not None:
+        c.title, c.titled = p.title.strip(), True
+    if p.deep is not None:
+        c.deep = p.deep
+    conversations.save(memory, c)
+    return c.preview()
+
+
+@app.delete("/conversations/{conversation_id}")
+def delete_conversation(conversation_id: str, memory: Path = Depends(get_memory)) -> dict:
+    _conversation_or_404(memory, conversation_id)
+    conversations.delete(memory, conversation_id)
+    return {"deleted": conversation_id}
+
+
+@app.post("/conversations/{conversation_id}/merge-back")
+def merge_back_conversation(conversation_id: str, memory: Path = Depends(get_memory)) -> dict:
+    """Undoes "started a new conversation": the turns go back to the conversation it was split from."""
+    c = _conversation_or_404(memory, conversation_id)
+    previous = conversations.merge_back(memory, c)
+    if not previous:
+        raise HTTPException(409, "this conversation wasn't split from another one (or that one is gone)")
+    return previous.to_json()
+
+
+@app.post("/conversations/{conversation_id}/split")
+def split_conversation(conversation_id: str, req: SplitRequest, memory: Path = Depends(get_memory)) -> dict:
+    """Undoes "continued the conversation": from this turn on, it becomes a new conversation."""
+    c = _conversation_or_404(memory, conversation_id)
+    index = next((i for i, x in enumerate(c.turns) if x.id == req.turn_id), None)
+    if index is None:
+        raise HTTPException(404, "turn not found")
+    if index == 0:
+        raise HTTPException(409, "this is already the first turn of the conversation")
+    return conversations.split(memory, c, index, clock.now()).to_json()
 
 
 # ---------- Claude Code sessions (Tier 3) ----------

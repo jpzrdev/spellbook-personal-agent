@@ -105,9 +105,9 @@ def test_question_about_a_note_goes_to_tier2_with_context(client, memory, monkey
     seen = {}
     original = tier2.decide
 
-    def spy(memory_, request, now, previous=None, note=None):
+    def spy(memory_, request, now, conversation=None, note=None, model=None):
         seen["note"] = note
-        return original(memory_, request, now, previous, note)
+        return original(memory_, request, now, conversation, note, model)
 
     monkeypatch.setattr(tier2, "decide", spy)
     r = client.post("/ask", json={"text": "my tasks", "note": NOTE}).json()
@@ -147,7 +147,7 @@ def test_annotations_go_into_the_question_context(client, memory, monkeypatch):
     client.post("/studies/calculus/annotations", json={"text": "My question: what about the product rule?", "topic": NOTE})
     seen = {}
     original = tier2.decide
-    monkeypatch.setattr(tier2, "decide", lambda v, p, a, prev=None, note=None: seen.update(note=note) or original(v, p, a, prev, note))
+    monkeypatch.setattr(tier2, "decide", lambda v, p, a, conv=None, note=None, model=None: seen.update(note=note) or original(v, p, a, conv, note, model))
     client.post("/ask", json={"text": "explain", "note": NOTE})
     assert "product rule" in seen["note"][1]
 

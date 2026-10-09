@@ -25,5 +25,6 @@ A personal system (agenda, studies, routines, knowledge).
 - Move skills out of an older memory (`memory/.claude/skills/` → `skills/`): `cd bridge && uv run python -m app.migrations.memory_skills [--apply]`
 - Rename an old `vault/` (and `VAULT_PATH`) to `memory/`: `cd bridge && uv run python -m app.migrations.memory_rename [--apply]`
 - Migrate a memory from the old Portuguese layout: `cd bridge && uv run python -m app.migrations.english_layout [--apply]`
+- Rebuild the chats from before conversations existed, from the receipts: `cd bridge && uv run python -m app.migrations.conversations_from_receipts [--apply]`
 - Download the voice models (once, ~1.9 GB): `cd bridge && uv run python -m app.speech.download_models`
 - AI: the Claude Code CLI logged in with the subscription (`claude auth login`); no API key

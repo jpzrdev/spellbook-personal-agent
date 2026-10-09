@@ -1,4 +1,8 @@
-"""Short context sent along with every Tier 2 request."""
+"""Short context sent along with every Tier 2 request.
+
+`build_context` is what changes rarely (who the user is, the indexes, the skills) and goes first in the request;
+`time_context` (now and the next days) changes on every call and goes last, so Claude Code's prompt cache can
+reuse everything before it, the conversation included."""
 
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -8,6 +12,7 @@ from app import modules
 from app.library import list_topics
 from app.locales import en
 from app.skills.catalog import list_skills
+from app.memory import recent
 from app.memory.learn import facts as learned_facts
 from app.memory.reader import read_text
 
@@ -21,12 +26,16 @@ def _trim(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[:limit].rstrip() + "\n…(truncated)"
 
 
-def build_context(memory: Path, now: datetime) -> str:
+def time_context(now: datetime) -> str:
     parts = [f"Now: {en.date_long(now.date())}, {now:%Y}, {now:%H:%M} ({get_settings().timezone})."]
     # Short calendar: the model gets weekday ↔ date wrong when it has to work it out by itself.
     days = [now.date() + timedelta(days=i) for i in range(15)]
     parts.append("Next days: " + "; ".join(f"{en.WEEKDAY_NAMES[d.weekday()][:3]} {d.isoformat()}" for d in days) + ".")
+    return "\n".join(parts)
 
+
+def build_context(memory: Path, now: datetime) -> str:
+    parts = []
     about_me = []
     folder = memory / "wiki" / "about-me"
     if folder.is_dir():
@@ -48,6 +57,8 @@ def build_context(memory: Path, now: datetime) -> str:
             kept.append(f"- {fact}")
         older = "(older facts omitted)\n" if len(kept) < len(facts) else ""
         parts.append("## Learned from conversations (newest last; newer wins)\n" + older + "\n".join(reversed(kept)))
+    if short := recent.context(memory, now.date()):
+        parts.append(short)
 
     index = read_text(memory / "wiki" / "_master-index.md")
     if index:

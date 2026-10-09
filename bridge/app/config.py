@@ -27,6 +27,8 @@ class Settings:
     # AI through Claude Code (the user's subscription)
     claude_bin: str
     tier2_model: str
+    # A conversation the user marked as "deep" (e.g. studying): Tier 2 uses this model instead
+    tier2_deep_model: str
     tier3_model: str
     tier3_timeout_min: float
     tier3_max_concurrent: int
@@ -100,6 +102,7 @@ def get_settings() -> Settings:
         language=language,
         claude_bin=os.getenv("CLAUDE_BIN", "").strip(),
         tier2_model=_env("TIER2_MODEL") or "haiku",
+        tier2_deep_model=_env("TIER2_DEEP_MODEL") or "sonnet",
         tier3_model=_env("TIER3_MODEL"),
         tier3_timeout_min=float(_env("TIER3_TIMEOUT_MIN") or 20),
         tier3_max_concurrent=_int("TIER3_MAX_CONCURRENT", 2),

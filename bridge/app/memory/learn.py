@@ -8,6 +8,7 @@ store it, with guards the model can't skip:
 |---|---|---|
 | profile | `wiki/about-me/learned.md` (one line, dated) | a short, durable fact about the user. Tier 2 reads it on the next request. |
 | raw | `raw/` (`type: learned`) | knowledge that needs organizing into a topic: compile-raw folds it into the wiki. |
+| recent | `life/recent.md` (app.memory.recent) | true for a few days only ("looking for a present for mom"): expires by itself. |
 
 `replaces` removes the older line a correction makes stale ("I don't work at X anymore"). Duplicates
 and anything that looks like a secret are dropped. lint-wiki consolidates learned.md into the other notes.
@@ -20,7 +21,7 @@ from datetime import datetime
 from pathlib import Path
 
 from app.locales import t
-from app.memory import writer
+from app.memory import recent, writer
 from app.memory.reader import read_text
 
 LEARNED = "wiki/about-me/learned.md"
@@ -39,7 +40,7 @@ LINE_RE = re.compile(r"^- (?P<fact>.+?)(?: \((?P<date>\d{4}-\d{2}-\d{2})\))?\s*$
 @dataclass
 class Learned:
     fact: str
-    where: str  # profile | raw
+    where: str  # profile | raw | recent
     path: str
     replaced: str | None = None
 
@@ -119,8 +120,14 @@ def save(memory: Path, items: list[dict], now: datetime, source: str, request: s
         fact = re.sub(r"\s+", " ", str(item.get("fact") or "")).strip()
         if not fact or len(fact) > MAX_FACT or SECRET_RE.search(fact):
             continue
-        where = "raw" if item.get("where") == "raw" else "profile"
-        if where == "profile":
+        where = item.get("where") if item.get("where") in ("raw", "recent") else "profile"
+        if where == "recent":
+            replaces = str(item.get("replaces") or "").strip() or None
+            days = item.get("days") if isinstance(item.get("days"), int) else None
+            written, replaced = recent.add(memory, fact, now, days, replaces)
+            if written:
+                out.append(Learned(fact, "recent", recent.RECENT, replaced))
+        elif where == "profile":
             replaces = str(item.get("replaces") or "").strip() or None
             written, replaced = _add_profile(memory, fact, replaces, now)
             if written:
@@ -145,5 +152,5 @@ def describe(learned: list[Learned]) -> str:
     """The line appended to Gandalf's reply, so the user sees (and can fix) what was kept."""
     if not learned:
         return ""
-    parts = [t("learn.profile" if x.where == "profile" else "learn.raw", fact=x.fact, path=x.path) for x in learned]
+    parts = [t(f"learn.{x.where}", fact=x.fact, path=x.path) for x in learned]
     return "\n\n" + "\n".join(parts)

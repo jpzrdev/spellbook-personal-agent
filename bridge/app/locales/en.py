@@ -57,6 +57,13 @@ DATE_HINT_RE = re.compile(
 # ---------- Tier 1 commands ----------
 # Order matters: add/note before "tasks" (more generic). `rest` groups are cut from the original text.
 _PREFIX = r"^(?:(?:hey |ok )?gandalf,? )?(?:please )?"
+# A message that continues the conversation ("and tomorrow?", "the second one"): skips Tier 1 (which doesn't see
+# the conversation). Matched on the normalized text (lowercase, no accents).
+FOLLOW_UP_RE = re.compile(
+    r"^(?:and|also|then|but|so|what about|how about|the (?:first|second|third|last|other|next) one|that one|this one"
+    r"|those|these|it|they|them)"
+)
+
 INTENTS: list[tuple[str, str]] = [
     ("add_task", _PREFIX + r"(?:add|create|new)(?: a)?(?: new)? task:? (?P<rest>.+)$"),
     ("note", _PREFIX + r"(?:note(?: down)?|jot(?: down)?|write down|capture)(?: that)?:? (?P<rest>.+)$"),
@@ -192,6 +199,7 @@ MESSAGES = {
     "capture.no_devices": "\n\n_Turn on notifications on the Today screen to get the alert on your phone._",
     "learn.profile": "🧠 I'll remember: {fact}",
     "learn.raw": "🧠 Kept for the wiki: {fact} (`{path}`)",
+    "learn.recent": "🕑 I'll keep in mind for the next few days: {fact}",
     "router.not_understood": (
         "That request isn't among my quick spells, friend. The ones I know by heart: "
         "\"what do I have today/tomorrow?\", \"my priorities\", \"my tasks\", "

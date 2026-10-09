@@ -1,11 +1,11 @@
-import { BookmarkPlus, ChevronDown, Send, Terminal } from 'lucide-react'
+import { BookmarkPlus, ChevronDown, GitBranch, Send, Terminal, Undo2 } from 'lucide-react'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
 import type { ProposalSummary } from '../lib/api'
-import { chat, useChat, type Turn } from '../lib/chatStore'
+import { chat, createChatStore, useChat, type ChatStore, type Turn } from '../lib/chatStore'
 import { mascot, reactToReply } from '../lib/mascot'
 import { cn } from '../lib/cn'
-import { useAsk, useCapture, useSessions } from '../lib/queries'
+import { useAsk, useCapture, useConversationAction, useSessions } from '../lib/queries'
 import { SESSION_STATUS } from '../lib/sessions'
 import { EventProposal } from './EventProposal'
 import { GandalfText } from './GandalfText'
@@ -16,20 +16,21 @@ import { focusRing } from './ui/styles'
 
 const SUGGESTIONS = ['what do I have today?', 'my priorities', 'remind me to … in 30 min', 'add task …', 'organize my raw/']
 
-function useSend(note?: string) {
+function useSend(store: ChatStore, note?: string) {
   const ask = useAsk()
   function send(question: string, confirm = false) {
-    const id = chat.add(question)
+    const id = store.add(question)
     mascot.feed(15)
+    const { conversationId, deep } = store.get()
     ask.mutate(
-      { text: question, confirm, note },
+      { text: question, confirm, note, conversationId, deep },
       {
         onSuccess: (reply) => {
-          chat.update(id, { reply })
+          store.settle(id, reply)
           reactToReply(reply)
         },
         onError: (err) => {
-          chat.update(id, { error: err.message })
+          store.update(id, { error: err.message })
           mascot.react('confused', 3000)
         },
       },
@@ -66,7 +67,44 @@ ${answer}` },
   )
 }
 
-function Reply({ t, last, send }: { t: Turn; last: boolean; send: (q: string, c?: boolean) => void }) {
+/** After a pause Gandalf decided on its own whether this was the same subject; one tap undoes it. */
+function ThreadNotice({ t, store }: { t: Turn; store: ChatStore }) {
+  const r = t.reply!
+  const action = useConversationAction()
+  const toast = useToast()
+  if (!r.thread || !r.conversation_id) return null
+  const isNew = r.thread.decision === 'new'
+  function undo() {
+    action.mutate(
+      isNew ? { id: r.conversation_id!, action: 'merge-back' } : { id: r.conversation_id!, action: 'split', turnId: t.id },
+      {
+        onSuccess: (c) => {
+          store.load(c)
+          // The notice goes away: the choice was made.
+          const turn = store.get().turns.find((x) => x.id === t.id)
+          if (turn?.reply) store.update(t.id, { reply: { ...turn.reply, thread: null } })
+        },
+        onError: (e) => toast('error', e.message),
+      },
+    )
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs text-ink-muted">
+      <GitBranch className="size-3.5" aria-hidden />
+      <span>{isNew ? 'New subject: I started a new conversation.' : 'Back after a break: I kept the same conversation.'}</span>
+      <button
+        type="button"
+        disabled={action.isPending}
+        onClick={undo}
+        className={cn('flex cursor-pointer items-center gap-1 rounded-pill px-2 py-0.5 font-semibold text-primary-text shadow-raised-sm active:shadow-sunken-sm disabled:opacity-60', focusRing)}
+      >
+        <Undo2 className="size-3" aria-hidden /> {isNew ? 'Keep it in the previous one' : 'Start a new one from here'}
+      </button>
+    </div>
+  )
+}
+
+function Reply({ t, last, send, store }: { t: Turn; last: boolean; send: (q: string, c?: boolean) => void; store: ChatStore }) {
   const r = t.reply!
   const [open, setOpen] = useState(last)
   const { data: sessions } = useSessions()
@@ -92,6 +130,7 @@ function Reply({ t, last, send }: { t: Turn; last: boolean; send: (q: string, c?
         {session && <Badge color={SESSION_STATUS[session.status].color}>{SESSION_STATUS[session.status].text}</Badge>}
         {r.tier === 1 && !r.understood && <Badge color="gold">not recognized</Badge>}
       </div>
+      <ThreadNotice t={t} store={store} />
       <GandalfText text={r.reply} />
       {r.tier === 2 && r.intent === 'answer' && <KeepAnswer question={t.question} answer={r.reply} />}
       {proposals.map((p) => (
@@ -99,7 +138,7 @@ function Reply({ t, last, send }: { t: Turn; last: boolean; send: (q: string, c?
           key={p.id}
           proposal={p}
           onChange={(next) =>
-            chat.update(t.id, { reply: { ...r, data: { ...r.data, proposals: proposals.map((x) => (x.id === next.id ? next : x)) } } })
+            store.update(t.id, { reply: { ...r, data: { ...r.data, proposals: proposals.map((x) => (x.id === next.id ? next : x)) } } })
           }
         />
       ))}
@@ -130,7 +169,7 @@ function Reply({ t, last, send }: { t: Turn; last: boolean; send: (q: string, c?
 type Props = {
   className?: string
   height?: string
-  /** A conversation about a study note: the questions go with it as context. */
+  /** A conversation about a study note: the questions go with it as context, in a conversation of its own. */
   note?: string
   placeholder?: string
   /** Shows only the turns made here (not the whole chat history). */
@@ -139,10 +178,12 @@ type Props = {
 
 /** The conversation with Gandalf: a tier badge on each reply and a mini terminal on Tier 3 replies. */
 export function ChatThread({ className, height = 'max-h-[60vh]', note, placeholder = 'Ask or request something…', newOnly = false }: Props) {
-  const all = useChat()
+  // A note's chat is its own conversation; everything else continues the main one.
+  const [store] = useState(() => (note ? createChatStore() : chat))
+  const all = useChat(store).turns
   const [since] = useState(() => (newOnly ? all.length : 0))
   const turns = newOnly ? all.slice(since) : all
-  const { send, pending } = useSend(note)
+  const { send, pending } = useSend(store, note)
   const [text, setText] = useState('')
   const end = useRef<HTMLDivElement>(null)
   const field = useRef<HTMLInputElement>(null)
@@ -189,7 +230,7 @@ export function ChatThread({ className, height = 'max-h-[60vh]', note, placehold
         {turns.map((t, i) => (
           <div key={t.id} className="anim-message flex flex-col gap-2">
             <p className="max-w-[85%] self-end rounded-control px-3 py-2 text-sm font-semibold shadow-sunken-sm">{t.question}</p>
-            {t.reply && <Reply t={t} last={i === turns.length - 1} send={send} />}
+            {t.reply && <Reply t={t} last={i === turns.length - 1} send={send} store={store} />}
             {t.error && (
               <p role="alert" className="text-sm font-semibold text-danger">
                 {t.error}
