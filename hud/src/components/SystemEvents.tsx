@@ -41,6 +41,7 @@ export function SystemEvents() {
         // A session may have touched tasks, the agenda, etc.
         qc.invalidateQueries({ queryKey: ['today'] })
         qc.invalidateQueries({ queryKey: ['tasks'] })
+        if (s.output === 'library') qc.invalidateQueries({ queryKey: ['library'] })
       }
     }
   })

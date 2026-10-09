@@ -30,6 +30,7 @@ You are the user's assistant (Gandalf by default; the name and look the user cho
   - `life/tasks.md`: tasks, one per line (`- [ ] text 📅 YYYY-MM-DD ⏫ #tag`).
   - `life/journal/YYYY-MM-DD.md`: the day's journal.
   - `life/reminders.md`: reminders Gandalf sends as notifications (`- [ ] text ⏰ YYYY-MM-DD HH:MM 🆔 id` or `🔁 <cron>`). Don't touch the `🆔`. Calendar appointments don't go here: they go to Google Calendar (`schedule-event` skill, only with the user's confirmation).
+- `spaces/<module>/`: the pages of the modules the user turned on in the HUD (Workouts, Recipes, Reading…). `space.yaml` (how the HUD shows the folder) and `_guide.md` (how the page works, what each button does) come from the system: don't edit them. Each item is a note beside them; follow the module's skill (`workouts`, `recipes`, `reading`), which has the data contract (frontmatter values and the `## Section` headings the page reads).
 - `receipts/`: one receipt per request. **Never edit existing receipts.**
 
 ## Indexes

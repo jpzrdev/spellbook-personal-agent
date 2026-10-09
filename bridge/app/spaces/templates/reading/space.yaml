@@ -1,0 +1,37 @@
+name: Reading
+icon: book-open
+color: violet
+description: Books to read, being read and read, with your highlights and notes.
+item_name: book
+fields:
+  - {key: author, label: Author, type: text}
+  - key: status
+    label: Status
+    type: select
+    options:
+      - {value: want, label: Want to read, color: silver}
+      - {value: reading, label: Reading, color: gold}
+      - {value: done, label: Read, color: primary}
+  - {key: progress, label: Progress, type: progress, max: 100}
+  - {key: rating, label: Rating, type: rating}
+  - {key: finished, label: Finished on, type: date}
+  - {key: genres, label: Genres, type: tags}
+  - {key: cover, label: Cover, type: image}
+collection:
+  view: kanban
+  group_by: status
+  image: cover
+  show: [author, progress, rating]
+  filters: [genres]
+item:
+  - {block: properties}
+  - {block: markdown, section: Summary}
+  - {block: markdown, section: Highlights}
+  - {block: markdown, section: Notes}
+actions:
+  - label: Summarize my notes
+    description: The assistant turns your highlights and notes into a 5-line summary in “Summary”.
+    kind: skill
+    skill: reading
+    task: Summarize the user's highlights and notes of this book.
+    section: Summary

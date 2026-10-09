@@ -12,7 +12,11 @@ export class BridgeError extends Error {
 
 async function errorFrom(resp: Response): Promise<BridgeError> {
   const body = await resp.json().catch(() => ({}))
-  return new BridgeError(resp.status, typeof body.detail === 'string' ? body.detail : resp.statusText)
+  const detail = body.detail
+  // A page that fails validation comes as {message, errors: [...]}.
+  const message =
+    typeof detail === 'string' ? detail : Array.isArray(detail?.errors) ? `${detail.message}: ${detail.errors.join('; ')}` : resp.statusText
+  return new BridgeError(resp.status, message)
 }
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -134,7 +138,11 @@ export type Session = {
   skill: string | null
   routine: string | null
   output: 'memory' | 'ephemeral' | 'action' | 'research' | 'library'
+  /** The memory note it works on (a page's button: the page shows it running). */
+  target?: string | null
   ephemeral_id: string | null
+  /** Web research / save to the Library: what is being researched (and, when saving, which result). */
+  research: { topic: string; kind: 'research' | 'plan'; request: string; slug: string | null; ephemeral_id?: string } | null
   status: SessionStatus
   claude_session_id: string | null
   resumed_from: string | null

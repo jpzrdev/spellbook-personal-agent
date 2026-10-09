@@ -93,6 +93,19 @@ def main() -> None:
     emit({"type": "system", "subtype": "init", "session_id": session_id, "model": "claude-sonnet-5-5", "cwd": str(Path.cwd())})
     if "SLOW" in prompt:
         time.sleep(30)
+    if "SPACE" in prompt or "<space_errors>" in prompt:
+        # A page: broken on the first try (a kanban without group_by), fixed when the errors come back.
+        page = Path.cwd() / "spaces" / "demo" / "space.yaml"
+        fixed = "<space_errors>" in prompt
+        content = "name: Demo\ncollection: {view: " + ("list" if fixed else "kanban") + "}\nitem:\n  - {block: markdown, section: Notes}\n"
+        emit({"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "t0", "name": "Write", "input": {"file_path": str(page), "content": content}},
+        ]}})
+        page.parent.mkdir(parents=True, exist_ok=True)
+        page.write_text(content, encoding="utf-8")
+        emit({"type": "result", "subtype": "success", "is_error": False, "result": "Page ready.",
+              "session_id": session_id, "duration_ms": 900, "total_cost_usd": 0.01, "usage": usage})
+        return
     target = Path.cwd() / "output" / "test-report.md"
     emit({"type": "assistant", "message": {"content": [
         {"type": "text", "text": "I'll write the report."},

@@ -1,7 +1,7 @@
 import { BookMarked, ChevronDown, Globe, Save, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router'
-import type { Ephemeral } from '../lib/api'
+import { isSessionActive, type Ephemeral } from '../lib/api'
 import { cn } from '../lib/cn'
 import { useDiscardEphemeral, useEphemeralItem, useSaveResearch, useSessions } from '../lib/queries'
 import { SESSION_STATUS } from '../lib/sessions'
@@ -15,7 +15,10 @@ export function ResearchActions({ e, onDiscarded }: { e: Ephemeral; onDiscarded?
   const discard = useDiscardEphemeral()
   const { data: sessions } = useSessions()
   const toast = useToast()
-  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [started, setStarted] = useState<string | null>(null)
+  // A save already running (e.g. started on another screen) keeps showing as "organizing…"
+  const running = sessions?.find((s) => s.output === 'library' && s.research?.ephemeral_id === e.id && isSessionActive(s))
+  const sessionId = started ?? running?.id ?? null
   const session = sessionId ? sessions?.find((s) => s.id === sessionId) : undefined
 
   if (sessionId)
@@ -48,7 +51,7 @@ export function ResearchActions({ e, onDiscarded }: { e: Ephemeral; onDiscarded?
         onClick={() =>
           save.mutate(e.id, {
             onSuccess: (s) => {
-              setSessionId(s.id)
+              setStarted(s.id)
               toast('info', `Organizing "${e.research?.topic}" in the Library…`)
             },
             onError: (err) => toast('error', err.message),
@@ -69,12 +72,12 @@ export function ResearchActions({ e, onDiscarded }: { e: Ephemeral; onDiscarded?
   )
 }
 
-/** A research result inside the chat: shows up when the session ends; it can be saved or discarded. */
-export function ResearchResult({ sessionId }: { sessionId: string }) {
+/** A research result (chat, Terminals): shows up when the session ends; it can be saved or discarded. */
+export function ResearchResult({ sessionId, defaultOpen = true }: { sessionId: string; defaultOpen?: boolean }) {
   const { data: sessions } = useSessions()
   const session = sessions?.find((s) => s.id === sessionId)
   const { data: e, isError } = useEphemeralItem(session?.ephemeral_id)
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(defaultOpen)
   const [discarded, setDiscarded] = useState(false)
 
   if (!session || session.status === 'queued' || session.status === 'running')

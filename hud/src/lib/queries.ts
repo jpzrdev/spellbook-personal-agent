@@ -37,6 +37,7 @@ import {
   type SetupStatus,
 } from './api'
 import { DEFAULT_AGENT } from './avatar'
+import type { FieldValue, Module, SpaceConfig, SpaceDetail, SpaceItem, SpaceSummary, SpaceTemplate } from './spaces'
 import { chat } from './chatStore'
 
 // Periodic refetch + on window focus: what Gandalf or another device wrote shows up by itself.
@@ -527,6 +528,97 @@ export function useFinishSetup() {
     onSuccess: (agent) => {
       qc.setQueryData(['agent'], agent)
       qc.setQueryData<SetupStatus>(['setup'], (old) => (old ? { ...old, done: true, agent } : old))
+    },
+  })
+}
+
+// ---------- Pages (spaces) ----------
+
+export function useSpaces() {
+  return useQuery({ queryKey: ['spaces'], queryFn: () => api<SpaceSummary[]>('/spaces'), refetchInterval: 30_000 })
+}
+
+export function useSpace(slug: string) {
+  return useQuery({ queryKey: ['spaces', slug], queryFn: () => api<SpaceDetail>(`/spaces/${slug}`), refetchInterval: 30_000 })
+}
+
+export function useSpaceItem(slug: string, item: string) {
+  return useQuery({ queryKey: ['spaces', slug, 'item', item], queryFn: () => api<SpaceItem>(`/spaces/${slug}/items/${item}`) })
+}
+
+export function useModules() {
+  return useQuery({ queryKey: ['modules'], queryFn: () => api<Module[]>('/modules'), staleTime: 60_000 })
+}
+
+export function useToggleModule() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (p: { id: string; active: boolean }) => put<Module[]>(`/modules/${p.id}`, { active: p.active }),
+    onSuccess: (data) => {
+      qc.setQueryData(['modules'], data)
+      return qc.invalidateQueries({ queryKey: ['spaces'] })
+    },
+  })
+}
+
+export function useModulePreview(id: string) {
+  return useQuery({ queryKey: ['modules', id, 'preview'], queryFn: () => api<SpaceTemplate>(`/modules/${id}/preview`), staleTime: Infinity })
+}
+
+function useInvalidateSpaces() {
+  const qc = useQueryClient()
+  return () => qc.invalidateQueries({ queryKey: ['spaces'] })
+}
+
+export function useSaveSpace(slug: string) {
+  const invalidate = useInvalidateSpaces()
+  return useMutation({ mutationFn: (config: SpaceConfig) => put<SpaceConfig>(`/spaces/${slug}/config`, { config }), onSuccess: invalidate })
+}
+
+export function useRemoveSpace() {
+  const invalidate = useInvalidateSpaces()
+  return useMutation({ mutationFn: (slug: string) => del(`/spaces/${slug}`), onSuccess: invalidate })
+}
+
+export function useCreateItem(slug: string) {
+  const invalidate = useInvalidateSpaces()
+  return useMutation({
+    mutationFn: (p: { title: string; fields: Record<string, FieldValue> }) => post<{ id: string }>(`/spaces/${slug}/items`, p),
+    onSuccess: invalidate,
+  })
+}
+
+export function useUpdateItem(slug: string, item: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (p: { fields?: Record<string, FieldValue>; check?: { section: string; index: number; done: boolean } }) =>
+      patch<SpaceItem>(`/spaces/${slug}/items/${item}`, p),
+    onSuccess: (data) => {
+      qc.setQueryData(['spaces', slug, 'item', item], data)
+      return qc.invalidateQueries({ queryKey: ['spaces', slug], exact: true })
+    },
+  })
+}
+
+export function useDeleteItem(slug: string) {
+  const invalidate = useInvalidateSpaces()
+  return useMutation({ mutationFn: (item: string) => del(`/spaces/${slug}/items/${item}`), onSuccess: invalidate })
+}
+
+export type ActionResult = { kind: 'tasks'; created: string[] } | { kind: 'row'; item: SpaceItem } | { kind: 'skill'; session: Session }
+
+export function useSpaceAction(slug: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (p: { index: number; item?: string; values?: Record<string, string> }) =>
+      post<ActionResult>(`/spaces/${slug}/actions/${p.index}`, { item: p.item ?? null, values: p.values ?? {} }),
+    onSuccess: (r, p) => {
+      if (r.kind === 'row' && p.item) qc.setQueryData(['spaces', slug, 'item', p.item], r.item)
+      return Promise.all([
+        qc.invalidateQueries({ queryKey: ['spaces', slug], exact: true }),
+        qc.invalidateQueries({ queryKey: [r.kind === 'tasks' ? 'tasks' : 'sessions'] }),
+        qc.invalidateQueries({ queryKey: ['today'] }),
+      ])
     },
   })
 }

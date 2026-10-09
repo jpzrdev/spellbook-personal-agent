@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildCron, readCron, relativeTime } from './time'
+import { buildCron, expiresIn, readCron, relativeTime } from './time'
 
 describe('relativeTime', () => {
   const now = new Date(2026, 9, 3, 10, 0) // Sat 10/03 10:00 (local time)
@@ -14,6 +14,17 @@ describe('relativeTime', () => {
   it('weekday and date', () => {
     expect(relativeTime(new Date(2026, 9, 5, 6, 50).toISOString(), now)).toBe('Mon 06:50')
     expect(relativeTime(new Date(2026, 8, 20, 8, 0).toISOString(), now)).toBe('Sep 20 08:00')
+  })
+})
+
+describe('expiresIn', () => {
+  const now = new Date(2026, 9, 3, 10, 0)
+
+  it('minutes, hours, days', () => {
+    expect(expiresIn(new Date(2026, 9, 3, 9, 0).toISOString(), now)).toBe('soon')
+    expect(expiresIn(new Date(2026, 9, 3, 10, 20).toISOString(), now)).toBe('in 20 min')
+    expect(expiresIn(new Date(2026, 9, 4, 15, 0).toISOString(), now)).toBe('in 29 h')
+    expect(expiresIn(new Date(2026, 9, 10, 10, 0).toISOString(), now)).toBe('in 7 days')
   })
 })
 

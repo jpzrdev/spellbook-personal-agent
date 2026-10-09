@@ -9,12 +9,13 @@ import { focusRing } from '../components/ui/styles'
 import { api, post, type Avatar, type Connectors, type Gender, type SetupStatus } from '../lib/api'
 import { COLOR_NAMES, PARTS, PRESETS, SWATCHES, randomAvatar, type Part } from '../lib/avatar'
 import { cn } from '../lib/cn'
-import { useFinishSetup, useSaveAgent, useSaveUser, useSetup } from '../lib/queries'
+import { useFinishSetup, useModules, useSaveAgent, useSaveUser, useSetup } from '../lib/queries'
+import { ModuleRow } from './Spaces'
 
 // First run: connect Claude (and, optionally, Google), name and draw the assistant, introduce yourself.
 // It can be opened again later (/setup) to change any of it; the answers come prefilled.
 
-const STEPS = ['Connect', 'Your assistant', 'About you', 'Ready'] as const
+const STEPS = ['Connect', 'Your assistant', 'About you', 'Modules', 'Ready'] as const
 
 export function Setup() {
   const { data: status, error, isPending } = useSetup()
@@ -69,7 +70,8 @@ function SetupFlow({ status }: { status: SetupStatus }) {
         {step === 0 && <ConnectStep status={status} onNext={() => setStep(1)} />}
         {step === 1 && <AgentStep value={agent} onChange={setAgent} onBack={() => setStep(0)} onNext={() => setStep(2)} />}
         {step === 2 && <UserStep agentName={agent.name} value={user} onChange={setUser} onBack={() => setStep(1)} onNext={() => setStep(3)} />}
-        {step === 3 && <ReadyStep agent={agent} userName={user.name} again={status.done} onBack={() => setStep(2)} />}
+        {step === 3 && <ModulesStep agentName={agent.name} onBack={() => setStep(2)} onNext={() => setStep(4)} />}
+        {step === 4 && <ReadyStep agent={agent} userName={user.name} again={status.done} onBack={() => setStep(3)} />}
       </div>
     </div>
   )
@@ -77,7 +79,7 @@ function SetupFlow({ status }: { status: SetupStatus }) {
 
 function Stepper({ step, onGo }: { step: number; onGo: (i: number) => void }) {
   return (
-    <ol className="grid grid-cols-4 gap-2" aria-label="Setup steps">
+    <ol className="grid grid-cols-5 gap-2" aria-label="Setup steps">
       {STEPS.map((label, i) => (
         <li key={label}>
           <button
@@ -443,6 +445,28 @@ function UserStep({ agentName, value, onChange, onBack, onNext }: { agentName: s
 }
 
 // ---------- 4. Ready ----------
+
+// ---------- 4. Modules ----------
+
+function ModulesStep({ agentName, onBack, onNext }: { agentName: string; onBack: () => void; onNext: () => void }) {
+  const { data: modules = [], isPending } = useModules()
+  return (
+    <Card title={`What should ${agentName.trim() || 'your assistant'} look after?`} subtitle="Turn on what you use. You can change it later in Modules; turning one off hides it and keeps its data.">
+      {isPending ? (
+        <p className="text-ink-muted">loading…</p>
+      ) : (
+        <ul className="grid gap-3 sm:grid-cols-2">
+          {modules.map((m) => (
+            <li key={m.id}>
+              <ModuleRow m={m} compact />
+            </li>
+          ))}
+        </ul>
+      )}
+      <Nav onBack={onBack} next={<Button onClick={onNext}>Next</Button>} />
+    </Card>
+  )
+}
 
 function ReadyStep({ agent, userName, again, onBack }: { agent: AgentForm; userName: string; again: boolean; onBack: () => void }) {
   const finish = useFinishSetup()

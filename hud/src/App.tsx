@@ -22,6 +22,10 @@ const LibraryTopicScreen = screen(() => import('./screens/Library'), 'LibraryTop
 const Receipts = screen(() => import('./screens/Receipts'), 'Receipts')
 const UiCatalog = screen(() => import('./screens/UiCatalog'), 'UiCatalog')
 const Setup = screen(() => import('./screens/Setup'), 'Setup')
+const Modules = screen(() => import('./screens/Spaces'), 'Modules')
+const ModulePreview = screen(() => import('./screens/Spaces'), 'ModulePreview')
+const SpaceScreen = screen(() => import('./screens/Spaces'), 'SpaceScreen')
+const SpaceItemScreen = screen(() => import('./screens/Spaces'), 'SpaceItemScreen')
 
 export default function App() {
   return (
@@ -51,6 +55,10 @@ export default function App() {
             <Route path="memory" element={<Memory />} />
             <Route path="receipts" element={<Receipts />} />
             <Route path="ui" element={<UiCatalog />} />
+            <Route path="modules" element={<Modules />} />
+            <Route path="modules/:id" element={<ModulePreview />} />
+            <Route path="p/:slug" element={<SpaceScreen />} />
+            <Route path="p/:slug/:item" element={<SpaceItemScreen />} />
           </Route>
         </Routes>
       </BrowserRouter>
