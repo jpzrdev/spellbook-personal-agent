@@ -52,6 +52,7 @@ def test_a_current_question_becomes_research_and_is_saved_in_the_library(client,
     assert g.status_code == 201
     save = g.json()
     assert save["skill"] == "save-research" and save["output"] == "library"
+    assert save["research"]["ephemeral_id"] == e["id"]  # the HUD knows which pending result is being saved
     assert "<report>" in save["task"] and "Create a new topic" in save["task"]
     _wait_for_receipt(client, save["id"])
     assert client.get(f"/ephemeral/{e['id']}").status_code == 404  # saved: left "Summaries"

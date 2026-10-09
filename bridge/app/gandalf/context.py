@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from app.config import get_settings
+from app import modules
 from app.library import list_topics
 from app.locales import en
 from app.skills.catalog import list_skills
@@ -56,6 +57,8 @@ def build_context(memory: Path, now: datetime) -> str:
     if topics:
         lines = [f"- `{x['slug']}`: {x['title']} ({x['kind']}, updated {x['updated'] or '?'})" for x in topics[:30]]
         parts.append("## Library (research and plans already saved)\n" + "\n".join(lines))
+
+    parts.append(modules.context(memory))
 
     skills = list_skills()
     if skills:

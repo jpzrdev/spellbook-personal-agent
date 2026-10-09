@@ -1,6 +1,7 @@
 import { Play, TerminalSquare } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
+import { ResearchResult } from '../components/ResearchResult'
 import { SessionTerminal } from '../components/SessionTerminal'
 import { Button, EmptyState, useToast } from '../components/ui'
 import { focusRing, solid, sunken } from '../components/ui/styles'
@@ -98,6 +99,8 @@ export function Terminals() {
             })}
           </div>
           {active && <SessionTerminal key={active.id} sessionId={active.id} initial={active} height="h-[28rem]" onContinued={(next) => select(next.id)} />}
+          {/* Web research: the report is ephemeral until you save it (the terminal only shows the run) */}
+          {active?.output === 'research' && <ResearchResult key={active.id} sessionId={active.id} defaultOpen={false} />}
         </>
       )}
     </div>

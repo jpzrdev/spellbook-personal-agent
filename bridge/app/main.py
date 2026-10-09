@@ -34,7 +34,7 @@ from pydantic import BaseModel, Field
 from starlette.requests import HTTPConnection
 from starlette.responses import FileResponse
 
-from app import clock, ephemeral, library, persona, proposals, push
+from app import clock, ephemeral, library, modules, persona, proposals, push
 from app import reminders as reminder_scheduler
 from app import studies
 from app import studies_quiz as quiz
@@ -49,6 +49,7 @@ from app.routines import files as routine_files
 from app.routines import scheduler, status as routine_status
 from app.routines.actions import ACTIONS
 from app.setup_memory import TEMPLATE, copy_template
+from app.spaces import store as spaces
 from app.skills.catalog import has_skill, list_skills
 from app.speech import voice
 from app.memory import browse, clip, edit, links, reader, writer
@@ -590,6 +591,160 @@ def library_tasks(slug: str, memory: Path = Depends(get_memory)) -> dict:
         return {"created": library.checklist_to_tasks(memory, slug, clock.now().date())}
     except (FileNotFoundError, library.InvalidTopic) as e:
         raise HTTPException(404, "topic or checklist not found") from e
+
+
+# ---------- Pages (spaces) ----------
+
+@contextmanager
+def _space_errors():
+    try:
+        yield
+    except spaces.InvalidSpace as e:
+        raise HTTPException(422, {"message": "the page doesn't pass validation", "errors": e.problems}) from e
+    except FileNotFoundError as e:
+        raise HTTPException(404, "page or item not found") from e
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+
+
+class SpaceConfig(BaseModel):
+    config: dict
+
+
+class ItemCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
+    fields: dict = Field(default_factory=dict)
+
+
+class ItemCheck(BaseModel):
+    section: str = Field(min_length=1, max_length=60)
+    index: int = Field(ge=0)
+    done: bool
+
+
+class ItemPatch(BaseModel):
+    fields: dict | None = None
+    check: ItemCheck | None = None
+
+
+class ActionRun(BaseModel):
+    item: str | None = Field(default=None, max_length=60)
+    values: dict = Field(default_factory=dict)  # row: the form's values by column
+
+
+class ModuleToggle(BaseModel):
+    active: bool
+
+
+@app.get("/modules")
+def list_modules(memory: Path = Depends(get_memory)) -> list[dict]:
+    return modules.list_modules(memory)
+
+
+@app.put("/modules/{module_id}")
+def toggle_module(module_id: str, t: ModuleToggle, memory: Path = Depends(get_memory)) -> list[dict]:
+    try:
+        return modules.set_active(memory, module_id, t.active)
+    except KeyError as e:
+        raise HTTPException(404, "module not found") from e
+
+
+@app.get("/modules/{module_id}/preview")
+def module_preview(module_id: str) -> dict:
+    """A page module's layout, guide and sample items (to see it before turning it on)."""
+    try:
+        m = modules.get(module_id)
+        if m.kind != "page":
+            raise KeyError(module_id)
+        return spaces.template(module_id)
+    except (KeyError, FileNotFoundError) as e:
+        raise HTTPException(404, "module not found") from e
+
+
+@app.get("/spaces")
+def list_spaces(memory: Path = Depends(get_memory)) -> list[dict]:
+    return spaces.list_spaces(memory)
+
+
+@app.get("/spaces/{slug}")
+def space_detail(slug: str, memory: Path = Depends(get_memory)) -> dict:
+    with _space_errors():
+        return spaces.detail(memory, slug)
+
+
+@app.put("/spaces/{slug}/config")
+def space_save(slug: str, c: SpaceConfig, memory: Path = Depends(get_memory)) -> dict:
+    """The page's settings edited in the HUD (view, fields shown, blocks, publish): validated like Gandalf's."""
+    with _space_errors():
+        spaces.detail(memory, slug)
+        return spaces.save(memory, slug, c.config).model_dump(mode="json")
+
+
+@app.delete("/spaces/{slug}")
+def space_remove(slug: str, memory: Path = Depends(get_memory)) -> dict:
+    with _space_errors():
+        return {"trash": spaces.remove(memory, slug, clock.now())}
+
+
+@app.get("/spaces/{slug}/items/{item_id}")
+def space_item(slug: str, item_id: str, memory: Path = Depends(get_memory)) -> dict:
+    with _space_errors():
+        return spaces.item(memory, slug, item_id)
+
+
+@app.post("/spaces/{slug}/items", status_code=201)
+def space_item_create(slug: str, i: ItemCreate, memory: Path = Depends(get_memory)) -> dict:
+    with _space_errors():
+        return {"id": spaces.create_item(memory, slug, i.title, i.fields)}
+
+
+@app.patch("/spaces/{slug}/items/{item_id}")
+def space_item_update(slug: str, item_id: str, p: ItemPatch, memory: Path = Depends(get_memory)) -> dict:
+    with _space_errors():
+        if p.check:
+            spaces.toggle(memory, slug, item_id, p.check.section, p.check.index, p.check.done)
+        if p.fields:
+            spaces.set_fields(memory, slug, item_id, p.fields)
+        return spaces.item(memory, slug, item_id)
+
+
+@app.delete("/spaces/{slug}/items/{item_id}")
+def space_item_delete(slug: str, item_id: str, memory: Path = Depends(get_memory)) -> dict:
+    with _space_errors():
+        return {"trash": spaces.delete_item(memory, slug, item_id, clock.now())}
+
+
+@app.post("/spaces/{slug}/actions/{index}", status_code=201)
+def space_action(slug: str, index: int, a: ActionRun, memory: Path = Depends(get_memory)) -> dict:
+    """One of the page's buttons. tasks and row run here (no AI); skill hands the item to Claude Code with the
+    page's skill, which writes only into the action's section (the HUD shows it running on the item)."""
+    with _space_errors():
+        space = spaces.load(memory, slug)
+        if not 0 <= index < len(space.actions):
+            raise FileNotFoundError(index)
+        action = space.actions[index]
+        if action.scope == "item" and not a.item:
+            raise ValueError("this action needs an item")
+        if action.kind == "tasks":
+            existing = {x.text.strip().lower() for x in reader.read_tasks(memory)}
+            created = []
+            for text in spaces.open_items(memory, slug, a.item, action.section):
+                if text.lower() not in existing:
+                    writer.add_task(memory, text[:300], tags=[action.tag or slug])
+                    existing.add(text.lower())
+                    created.append(text)
+            return {"kind": "tasks", "created": created}
+        if action.kind == "row":
+            item = spaces.add_row(memory, slug, a.item, action.section, action.columns, a.values, action.touch)
+            return {"kind": "row", "item": item}
+        if not has_skill(action.skill):
+            raise ValueError(f"the skill `{action.skill}` is missing")
+        path = spaces.item(memory, slug, a.item)["path"] if a.item else None
+        where = f"The page is the folder `spaces/{slug}/` (guide: `spaces/{slug}/_guide.md`)."
+        if path:
+            where += f" The item is `{path}`. Write the result only in its `## {action.section}` section (create the heading if it is missing; replace what was there)."
+    s = tier3.manager(memory).create(f"{action.task}\n\n{where}", request=f"{space.name}: {action.label}", skill=action.skill, target=path)
+    return {"kind": "skill", "session": s.summary()}
 
 
 # ---------- Studies ----------

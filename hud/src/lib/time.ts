@@ -27,6 +27,16 @@ export function relativeTime(iso: string, now: Date = new Date()): string {
   return `${MONTHS[d.getMonth()]} ${d.getDate()} ${hhmm(d)}`
 }
 
+/** How long until something expires: "in 6 days", "in 5 h", "in 20 min", "soon". */
+export function expiresIn(iso: string, now: Date = new Date()): string {
+  const min = Math.floor((new Date(iso).getTime() - now.getTime()) / 60_000)
+  if (min < 1) return 'soon'
+  if (min < 60) return `in ${min} min`
+  const hours = Math.floor(min / 60)
+  if (hours < 48) return `in ${hours} h`
+  return `in ${Math.floor(hours / 24)} days`
+}
+
 export type Days = 'every' | 'weekdays' | 'weekend' | 'custom'
 
 /** Reads a simple cron back into the form (null = needs the advanced mode). */

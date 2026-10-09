@@ -1,14 +1,16 @@
-import { ArrowLeft, BookMarked, Compass, FileText, Globe, ListChecks, Map as MapIcon, MessageCircleQuestion, Plus, RefreshCw } from 'lucide-react'
+import { ArrowLeft, BookMarked, ChevronDown, Compass, FileText, Globe, Hourglass, ListChecks, Map as MapIcon, MessageCircleQuestion, Plus, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { ChatThread } from '../components/ChatThread'
 import { Markdown } from '../components/Markdown'
+import { ResearchActions } from '../components/ResearchResult'
 import { Badge, BentoGrid, BentoItem, Button, Card, EmptyState, Modal, Tabs, Textarea, useToast } from '../components/ui'
 import { focusRing } from '../components/ui/styles'
-import type { LibraryTopic } from '../lib/api'
+import { isSessionActive, type Ephemeral, type LibraryTopic, type Session } from '../lib/api'
 import { cn } from '../lib/cn'
 import { shortDate } from '../lib/dates'
-import { useAgent, useChecklistToTasks, useLibrary, useLibraryTopic, useNewResearch, useNote } from '../lib/queries'
+import { useChecklistToTasks, useEphemeral, useLibrary, useLibraryTopic, useNewResearch, useNote, useSessions, useAgent } from '../lib/queries'
+import { expiresIn, relativeTime } from '../lib/time'
 
 const url = (slug: string, note?: string) => `/library/${encodeURIComponent(slug)}${note ? `?part=${encodeURIComponent(note)}` : ''}`
 
@@ -25,11 +27,11 @@ function ResearchModal({ open, onClose, update, title }: { open: boolean; onClos
     research.mutate(
       { request: request.trim(), kind, update },
       {
-        onSuccess: (s) => {
+        onSuccess: () => {
           setRequest('')
           onClose()
-          toast('info', 'Researching the web… the result shows up in "Today\'s summaries" for you to save.')
-          navigate(`/terminals?session=${s.id}`)
+          toast('info', 'Researching the web… the result shows up in the Library under "Not saved yet".')
+          navigate('/library')
         },
         onError: (e) => toast('error', e.message),
       },
@@ -97,10 +99,57 @@ function TopicCard({ t }: { t: LibraryTopic }) {
   )
 }
 
+/** A research still running on the web: it becomes a pending result when it ends. */
+function RunningResearch({ s }: { s: Session }) {
+  return (
+    <article className="flex flex-wrap items-center gap-3 rounded-control p-4 shadow-raised-sm">
+      <Globe className="size-4 animate-pulse text-primary" aria-hidden />
+      <div className="min-w-0 flex-1">
+        <h3 className="truncate font-semibold">{s.research?.topic ?? s.request}</h3>
+        <p className="text-sm text-ink-muted">{s.status === 'queued' ? 'waiting in the queue…' : 'researching the web… (it may take a few minutes)'}</p>
+      </div>
+      <Link to={`/terminals?session=${s.id}`} className={cn('text-xs font-semibold text-ink-muted hover:text-ink', focusRing)}>
+        view session
+      </Link>
+    </article>
+  )
+}
+
+/** A research result not saved yet: read it, then save it (organized by topic) or discard it. */
+function PendingResearch({ e }: { e: Ephemeral }) {
+  const [open, setOpen] = useState(false)
+  const r = e.research
+  return (
+    <article className="flex flex-col gap-3 rounded-control p-4 shadow-raised-sm">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        className={cn('flex cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 text-left', focusRing)}
+      >
+        {r?.kind === 'plan' ? <MapIcon className="size-4 text-primary" aria-hidden /> : <Compass className="size-4 text-primary" aria-hidden />}
+        <span className="min-w-0 flex-1 font-semibold">{r?.topic ?? e.title}</span>
+        <span className="flex items-center gap-1 text-xs text-ink-muted">
+          {relativeTime(e.created)} · <Hourglass className="size-3" aria-hidden /> deleted {expiresIn(e.expires)}
+        </span>
+        <ChevronDown className={cn('size-4 text-ink-muted transition-transform', open && 'rotate-180')} aria-hidden />
+      </button>
+      {r?.slug && <p className="text-xs text-ink-muted">Update of a saved topic: saving merges it into that topic.</p>}
+      {open && <Markdown text={e.text} className="max-h-[60vh] overflow-y-auto pr-1 text-sm" />}
+      <ResearchActions e={e} />
+    </article>
+  )
+}
+
 export function Library() {
   const agentName = useAgent().name
   const { data: topics = [], isPending, error } = useLibrary()
+  const { data: ephemeral = [] } = useEphemeral()
+  const { data: sessions = [] } = useSessions()
   const [researching, setResearching] = useState(false)
+  const pending = ephemeral.filter((e) => e.research)
+  const running = sessions.filter((s) => s.output === 'research' && isSessionActive(s))
+  const hasPending = pending.length > 0 || running.length > 0
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-end justify-between gap-4">
@@ -112,10 +161,27 @@ export function Library() {
           <Plus className="size-4" aria-hidden /> New research
         </Button>
       </header>
+      {hasPending && (
+        <section aria-labelledby="library-pending" className="flex flex-col gap-3">
+          <div>
+            <h2 id="library-pending" className="text-xl font-semibold">Not saved yet</h2>
+            <p className="text-sm text-ink-muted">Research results wait here for 7 days, outside your memory, and are deleted after that unless you save them.</p>
+          </div>
+          {running.map((s) => (
+            <RunningResearch key={s.id} s={s} />
+          ))}
+          {pending.map((e) => (
+            <PendingResearch key={e.id} e={e} />
+          ))}
+        </section>
+      )}
+      {hasPending && <h2 className="text-xl font-semibold">Saved</h2>}
       {isPending ? (
         <p className="text-ink-muted">loading…</p>
       ) : error ? (
         <p role="alert" className="font-semibold text-danger">{error.message}</p>
+      ) : topics.length === 0 && hasPending ? (
+        <p className="text-sm text-ink-muted">Nothing saved yet: open a result above and tap “Save to memory”.</p>
       ) : topics.length === 0 ? (
         <EmptyState
           icon={<BookMarked />}

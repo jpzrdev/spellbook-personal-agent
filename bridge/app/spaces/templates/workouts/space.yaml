@@ -1,0 +1,40 @@
+name: Workouts
+icon: dumbbell
+color: ember
+description: Your workout plans, a log of every session and how your loads evolve.
+item_name: workout
+fields:
+  - key: focus
+    label: Focus
+    type: select
+    options:
+      - {value: upper, label: Upper body, color: ember}
+      - {value: lower, label: Lower body, color: wood}
+      - {value: full, label: Full body, color: gold}
+      - {value: cardio, label: Cardio, color: silver}
+  - {key: duration, label: Duration, type: duration}
+  - {key: last_done, label: Last done, type: date}
+collection:
+  view: list
+  show: [focus, duration, last_done]
+  filters: [focus]
+  sort: {field: last_done, order: desc}
+item:
+  - {block: properties}
+  - {block: steps, section: Exercises, timers: true}
+  - {block: chart, section: Log, title: Progress, x: Date, y: Load (kg), series: Exercise, kind: line}
+  - {block: markdown, section: Next session}
+  - {block: markdown, section: Notes}
+actions:
+  - label: Log session
+    description: Adds a row to the log (date, exercise, sets, reps, load) and sets “Last done”. The progress chart follows it.
+    kind: row
+    section: Log
+    columns: [Date, Exercise, Sets, Reps, Load (kg)]
+    touch: last_done
+  - label: Suggest next loads
+    description: The assistant reads your log and writes the loads and reps for your next session in “Next session”.
+    kind: skill
+    skill: workouts
+    task: Suggest the next session of this workout from its log.
+    section: Next session

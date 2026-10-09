@@ -1,0 +1,42 @@
+name: Recipes
+icon: chef-hat
+color: gold
+description: Recipes to cook, with ingredients to check off and steps with timers.
+item_name: recipe
+fields:
+  - {key: time_min, label: Time, type: duration}
+  - {key: servings, label: Servings, type: number}
+  - key: kind
+    label: Kind
+    type: select
+    options:
+      - {value: savory, label: Savory, color: wood}
+      - {value: sweet, label: Sweet, color: gold}
+      - {value: drink, label: Drink, color: silver}
+  - {key: tags, label: Tags, type: tags}
+  - {key: rating, label: Rating, type: rating}
+  - {key: tried, label: Tried, type: bool}
+  - {key: photo, label: Photo, type: image}
+collection:
+  view: cards
+  image: photo
+  show: [time_min, servings, rating]
+  filters: [kind, tags, tried]
+  sort: {field: rating, order: desc}
+item:
+  - {block: properties, fields: [time_min, servings, kind, rating, tried, tags]}
+  - {block: checklist, section: Ingredients, persist: false}
+  - {block: steps, section: Steps, timers: true}
+  - {block: markdown, section: Notes}
+actions:
+  - label: Shopping list
+    description: Turns the ingredients into tasks tagged #shopping (the ones already in your tasks are skipped).
+    kind: tasks
+    section: Ingredients
+    tag: shopping
+  - label: Adapt servings
+    description: The assistant rewrites the quantities for a different number of servings in “Adapted”, keeping the original.
+    kind: skill
+    skill: recipes
+    task: Adapt this recipe's ingredient quantities to double the servings, unless the user said another number in their notes.
+    section: Adapted

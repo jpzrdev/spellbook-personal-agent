@@ -13,10 +13,12 @@ type Props = {
   color?: Color
   children: ReactNode
   footer?: ReactNode
+  /** A wider panel (forms with several columns). */
+  wide?: boolean
 }
 
 /** A raised panel over a translucent midnight-blue veil (no blur). Esc/backdrop close it; traps focus. */
-export function Modal({ open, onClose, title, icon, color = 'primary', children, footer }: Props) {
+export function Modal({ open, onClose, title, icon, color = 'primary', children, footer, wide }: Props) {
   const panel = useRef<HTMLDivElement>(null)
   const titleId = useId()
 
@@ -65,7 +67,7 @@ export function Modal({ open, onClose, title, icon, color = 'primary', children,
         aria-modal="true"
         aria-labelledby={titleId}
         onMouseDown={(e) => e.stopPropagation()}
-        className={cn(raised, 'anim-pop w-full max-w-lg rounded-card p-6 shadow-raised-lg')}
+        className={cn(raised, 'anim-pop max-h-[calc(100dvh-2rem)] w-full overflow-y-auto rounded-card p-6 shadow-raised-lg', wide ? 'max-w-2xl' : 'max-w-lg')}
       >
         <header className="mb-5 flex items-center gap-3">
           {icon && (
