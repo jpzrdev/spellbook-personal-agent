@@ -91,6 +91,9 @@ def test_after_a_pause_tier2_can_start_a_new_conversation_and_the_user_can_undo_
     merged = client.post(f"/conversations/{new_id}/merge-back").json()
     assert merged["id"] == cid and len(merged["turns"]) == 3
     assert client.get(f"/conversations/{new_id}").status_code == 404
+    # reopened, the moved turn no longer offers the undo nor points at the deleted conversation
+    reply = client.get(f"/conversations/{cid}").json()["turns"][-1]["reply"]
+    assert reply["thread"] is None and reply["conversation_id"] == cid
 
 
 def test_after_a_pause_only_the_summary_and_the_last_turns_go(client, memory, monkeypatch):
@@ -114,7 +117,22 @@ def test_continuing_can_be_undone_by_splitting_from_the_turn(client, monkeypatch
     assert new["split_from"] == cid and [t["question"] for t in new["turns"]] == ["q2"]
     assert len(client.get(f"/conversations/{cid}").json()["turns"]) == 1
     assert client.post(f"/conversations/{new['id']}/split", json={"turn_id": turn}).status_code == 409
+    assert new["turns"][0]["reply"]["thread"] is None and new["turns"][0]["reply"]["conversation_id"] == new["id"]
     assert r["thread"]["decision"] == "continue"
+
+
+def test_follow_up_words_match_whole_words_only():
+    from app.gandalf.tier1 import normalize
+    from app.locales import en, pt_br
+
+    for text in ["and tomorrow?", "the second one", "it is late?", "what about friday"]:
+        assert en.FOLLOW_UP_RE.match(normalize(text)), text
+    for text in ["items for the trip", "something new", "android update", "theme ideas"]:
+        assert not en.FOLLOW_UP_RE.match(normalize(text)), text
+    for text in ["e amanhã?", "o segundo", "e se for sexta", "isso é caro?"]:
+        assert pt_br.FOLLOW_UP_RE.match(normalize(text)), text
+    for text in ["evento amanhã", "estudar python", "mascara", "elefante"]:
+        assert not pt_br.FOLLOW_UP_RE.match(normalize(text)), text
 
 
 def test_a_tier1_question_after_a_break_does_not_hide_the_break(client, monkeypatch):

@@ -58,10 +58,10 @@ DATE_HINT_RE = re.compile(
 # Order matters: add/note before "tasks" (more generic). `rest` groups are cut from the original text.
 _PREFIX = r"^(?:(?:hey |ok )?gandalf,? )?(?:please )?"
 # A message that continues the conversation ("and tomorrow?", "the second one"): skips Tier 1 (which doesn't see
-# the conversation). Matched on the normalized text (lowercase, no accents).
+# the conversation). Matched on the normalized text (lowercase, no accents); the \b keeps "it" from matching "items".
 FOLLOW_UP_RE = re.compile(
     r"^(?:and|also|then|but|so|what about|how about|the (?:first|second|third|last|other|next) one|that one|this one"
-    r"|those|these|it|they|them)"
+    r"|those|these|it|they|them)\b"
 )
 
 INTENTS: list[tuple[str, str]] = [

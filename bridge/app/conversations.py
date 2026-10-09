@@ -331,6 +331,14 @@ def _attr(text: str) -> str:
 
 # ---------- split (after a pause) ----------
 
+def _move(turns: list[Turn], to: str) -> None:
+    """Turns moved to another conversation: their stored reply points there, and the thread notice (already
+    acted on) doesn't come back when the conversation is opened again."""
+    for t in turns:
+        if t.reply:
+            t.reply = {**t.reply, "conversation_id": to, "thread": None}
+
+
 def split(memory: Path, c: Conversation, start: int, now: datetime) -> Conversation:
     """Moves the turns from `start` on to a new conversation (Tier 2 said the subject changed, or the user
     asked to start a new one from a turn)."""
@@ -338,6 +346,7 @@ def split(memory: Path, c: Conversation, start: int, now: datetime) -> Conversat
         c = load(memory, c.id) or c
         moved = c.turns[start:]
         target = new(now, deep=c.deep, split_from=c.id)
+        _move(moved, target.id)
         target.turns = moved
         target.title = moved[0].question[:TITLE_LIMIT] if moved else ""
         target.updated = now.isoformat(timespec="seconds")
@@ -360,6 +369,7 @@ def merge_back(memory: Path, c: Conversation) -> Conversation | None:
         previous = load(memory, c.split_from)
         if not previous:
             return None
+        _move(c.turns, previous.id)
         previous.turns += c.turns
         previous.updated = max(previous.updated, c.updated)
         save(memory, previous)

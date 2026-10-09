@@ -57,11 +57,11 @@ DATE_HINT_RE = re.compile(
 # ---------- Tier 1 commands ----------
 # Order matters: add/note before "tasks" (more generic). `rest` groups are cut from the original text.
 _PREFIX = r"^(?:(?:gandalf|jev),? )?"
-# Mensagem que continua a conversa ("e amanhã?", "o segundo"): pula o Tier 1 (que não vê a conversa).
-# Casada com o texto normalizado (minúsculas, sem acentos).
+# A message that continues the conversation ("e amanhã?", "o segundo"): skips Tier 1 (which can't see the conversation).
+# Matched against the normalized text (lowercase, no accents); the \b keeps "e" from matching "evento".
 FOLLOW_UP_RE = re.compile(
     r"^(?:e|tambem|entao|mas|e se|o primeiro|a primeira|o segundo|a segunda|o terceiro|a terceira|o ultimo"
-    r"|a ultima|o outro|a outra|esse|essa|esses|essas|isso|aquele|aquela|ele|ela|eles|elas|dele|dela)"
+    r"|a ultima|o outro|a outra|esse|essa|esses|essas|isso|aquele|aquela|ele|ela|eles|elas|dele|dela)\b"
 )
 
 INTENTS: list[tuple[str, str]] = [
